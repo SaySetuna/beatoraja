@@ -1,10 +1,12 @@
 package bms.player.beatoraja;
 
 import java.util.Arrays;
+import java.util.logging.Logger;
 
 import com.badlogic.gdx.Input.Keys;
 
 import bms.model.Mode;
+import bms.player.beatoraja.PlayModeConfig.ControllerConfig;
 import bms.player.beatoraja.input.BMControllerInputProcessor.BMKeys;
 import com.badlogic.gdx.math.MathUtils;
 
@@ -203,8 +205,11 @@ public class PlayModeConfig {
                             Keys.UNKNOWN, Keys.SHIFT_RIGHT, Keys.CONTROL_RIGHT };
                     break;
                 case POPN_5K:
-                case POPN_9K:
                     keys = new int[] { Keys.Z, Keys.S, Keys.X, Keys.D, Keys.C, Keys.F, Keys.V, Keys.G, Keys.B };
+            		break;
+                case POPN_9K:
+                    keys = new int[] { Keys.Z, Keys.S, Keys.X, Keys.D, Keys.C, Keys.F, Keys.V, Keys.G, Keys.B,
+                    		-1, -1, -1, -1, -1, -1, -1, -1, -1 };
                     break;
                 case KEYBOARD_24K:
                     keys = new int[] { Keys.Z, Keys.S, Keys.X, Keys.D, Keys.C, Keys.F, Keys.V, Keys.SHIFT_LEFT,
@@ -327,7 +332,6 @@ public class PlayModeConfig {
                         break;
                     case BEAT_7K:
                     case POPN_5K:
-                    case POPN_9K:
                     default:
                         keys = new int[]{ BMKeys.BUTTON_4, BMKeys.BUTTON_7, BMKeys.BUTTON_3, BMKeys.BUTTON_8, BMKeys.BUTTON_2,
                                 BMKeys.BUTTON_5, BMKeys.LEFT, BMKeys.UP, BMKeys.DOWN };
@@ -336,6 +340,7 @@ public class PlayModeConfig {
                         keys = new int[]{ BMKeys.BUTTON_4, BMKeys.BUTTON_7, BMKeys.BUTTON_3, BMKeys.BUTTON_8, BMKeys.BUTTON_2,
                                 BMKeys.UP, BMKeys.DOWN, -1,-1,-1,-1,-1,-1,-1 };
                         break;
+                    case POPN_9K:
                     case BEAT_14K:
                         keys = new int[]{ BMKeys.BUTTON_4, BMKeys.BUTTON_7, BMKeys.BUTTON_3, BMKeys.BUTTON_8, BMKeys.BUTTON_2,
                                 BMKeys.BUTTON_5, BMKeys.LEFT, BMKeys.UP, BMKeys.DOWN, -1,-1,-1,-1,-1,-1,-1,-1,-1 };
@@ -356,7 +361,6 @@ public class PlayModeConfig {
                     case BEAT_5K:
                     case BEAT_7K:
                     case POPN_5K:
-                    case POPN_9K:
                     default:
                         keys = new int[9];
                         Arrays.fill(keys, -1);
@@ -365,6 +369,7 @@ public class PlayModeConfig {
                         keys = new int[]{-1,-1,-1,-1,-1,-1,-1,BMKeys.BUTTON_4, BMKeys.BUTTON_7, BMKeys.BUTTON_3, BMKeys.BUTTON_8, BMKeys.BUTTON_2,
                                 BMKeys.UP, BMKeys.DOWN};
                         break;
+                    case POPN_9K:
                     case BEAT_14K:
                         keys = new int[]{-1,-1,-1,-1,-1,-1,-1,-1,-1,BMKeys.BUTTON_4, BMKeys.BUTTON_7, BMKeys.BUTTON_3, BMKeys.BUTTON_8, BMKeys.BUTTON_2,
                                 BMKeys.BUTTON_5, BMKeys.LEFT, BMKeys.UP, BMKeys.DOWN};
@@ -565,6 +570,7 @@ public class PlayModeConfig {
                     start = new Input(Input.Type.NOTE, 47);
                     select = new Input(Input.Type.NOTE, 48);
                     break;
+                case POPN_9K:
                 case BEAT_14K:
                     keys = new Input[18];
                     for (int i = 0; i < 7; i++) {
@@ -583,7 +589,6 @@ public class PlayModeConfig {
                     select = new Input(Input.Type.NOTE, 48);
                     break;
                 case POPN_5K:
-                case POPN_9K:
                     keys = new Input[9];
                     for (int i = 0; i < 9; i++) {
                         keys[i] = new Input(Input.Type.NOTE, 52 + i);

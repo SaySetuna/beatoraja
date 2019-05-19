@@ -393,6 +393,10 @@ public class PlayerConfig {
 	}
 
 	public PlayModeConfig getMode9() {
+		if(mode9 == null || mode9.getController().length < 2) {
+			mode9 = new PlayModeConfig(Mode.POPN_9K);
+			Logger.getGlobal().warning("mode9のPlayConfigを再構成");
+		}
 		return mode9;
 	}
 
@@ -657,7 +661,7 @@ public class PlayerConfig {
 		mode7.validate(9);
 		mode10.validate(14);
 		mode14.validate(18);
-		mode9.validate(9);
+		mode9.validate(18);
 		mode24.validate(26);
 		mode24double.validate(52);
 		

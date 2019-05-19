@@ -882,7 +882,7 @@ public class LR2PlaySkinLoader extends LR2SkinCSVLoader<PlaySkin> {
 		dstnote2 = new int[mode.key];
 		Arrays.fill(dstnote2,  Integer.MIN_VALUE);
 
-		playerr = new Rectangle[mode.player];
+		playerr = new Rectangle[mode.player / (mode == Mode.POPN_9K ? 2 : 1)];
 		for(int i = 0;i < playerr.length;i++) {
 			playerr[i] = new Rectangle();
 		}

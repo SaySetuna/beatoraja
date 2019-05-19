@@ -65,8 +65,8 @@ public class LaneProperty {
 			scratchToKey = new int[][] { {7,8}, {16,17} };
 			break;
 		case POPN_9K:
-			keyToLane = new int[] { 0, 1, 2, 3, 4, 5, 6, 7, 8 };
-			laneToKey = new int[][] { {0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8} };
+			keyToLane = new int[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 2, 3, 4, 5, 6, 7, 8, 0, 1 };
+			laneToKey = new int[][] { {0,16}, {1,17}, {2,9}, {3,10}, {4,11}, {5,12}, {6,13}, {7,14}, {8,15} };
 			laneToScratch = new int[] { -1, -1, -1, -1, -1, -1, -1, -1, -1 };
 			laneToSkinOffset = new int[] { 1, 2, 3, 4, 5, 6, 7, 8, 9 };
 			scratchToKey = new int[][] { };
@@ -106,8 +106,9 @@ public class LaneProperty {
 			break;
 		}
 		laneToPlayer = new int[mode.key];
+		int player = mode.player / (mode == Mode.POPN_9K ? 2 : 1);
 		for(int i = 0; i < mode.key; i++) {
-			laneToPlayer[i] = i / (mode.key / mode.player);
+			laneToPlayer[i] = i / (mode.key / player);
 		}
 	}
 

@@ -193,8 +193,8 @@ public class JudgeManager {
 		sckeyassign = main.getLaneProperty().getLaneScratchAssign();
 		laneassign = main.getLaneProperty().getLaneKeyAssign();
 		sckey = new int[model.getMode().scratchKey.length];
-
-		judge = new int[model.getMode().player][model.getMode().key / model.getMode().player + 1];
+		int playerN = model.getMode().player / (model.getMode() == Mode.POPN_9K ? 2 : 1);
+		judge = new int[model.getMode().player][model.getMode().key / playerN + 1];
 		processing = new LongNote[sckeyassign.length];
 		passing = new LongNote[sckeyassign.length];
 		passingcount = new int[sckeyassign.length];

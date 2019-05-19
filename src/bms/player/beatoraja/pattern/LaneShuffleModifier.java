@@ -93,7 +93,7 @@ public class LaneShuffleModifier extends PatternModifier {
 			else random = keys.length > 0 ? shuffle(keys) : keys;
 			break;
 		case FLIP:
-			if (mode.player == 2) {
+			if (mode.player == 2 && mode != Mode.POPN_9K) {
 				random = new int[mode.key];
 				for (int i = 0; i < random.length; i++) {
 					random[i] = (i + (mode.key / mode.player)) % mode.key;

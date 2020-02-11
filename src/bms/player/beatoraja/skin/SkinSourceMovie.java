@@ -29,6 +29,10 @@ public class SkinSourceMovie implements SkinSource {
 		this.timer = timer;
 	}
 
+	public boolean validate() {
+		return true;
+	}
+	
 	public TextureRegion getImage(long time, MainState state) {
 		if(!playing) {
 			image.play(time, true);
@@ -43,10 +47,6 @@ public class SkinSourceMovie implements SkinSource {
 		return null;
 	}
 
-	public TextureRegion[] getImages(long time, MainState state) {
-		return null;
-	}
-	
 	public void dispose() {
 		if (image != null) {
 			image.dispose();

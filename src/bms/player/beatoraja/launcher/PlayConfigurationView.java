@@ -2,27 +2,20 @@ package bms.player.beatoraja.launcher;
 
 import java.awt.Desktop;
 import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URL;
 import java.nio.file.*;
-import java.sql.Connection;
-import java.sql.DriverManager;
 import java.util.*;
 import java.util.logging.Logger;
 
-import org.apache.commons.dbutils.QueryRunner;
-import org.apache.commons.dbutils.handlers.MapListHandler;
+import bms.player.beatoraja.external.ScoreDataImporter;
 
-import com.badlogic.gdx.utils.Json;
-import com.badlogic.gdx.utils.JsonWriter.OutputType;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import bms.model.Mode;
 import bms.player.beatoraja.*;
-import bms.player.beatoraja.PlayModeConfig.ControllerConfig;
 import bms.player.beatoraja.play.JudgeAlgorithm;
 import bms.player.beatoraja.play.TargetProperty;
 import bms.player.beatoraja.song.*;
@@ -72,6 +65,8 @@ public class PlayConfigurationView implements Initializable {
 	@FXML
 	private Tab skinTab;
 	@FXML
+	private Tab musicselectTab;
+	@FXML
 	private Tab optionTab;
 	@FXML
 	private Tab otherTab;
@@ -87,8 +82,6 @@ public class PlayConfigurationView implements Initializable {
 	@FXML
 	private TextField playername;
 
-	@FXML
-	private ComboBox<PlayMode> inputconfig;
 	@FXML
 	private ComboBox<PlayMode> playconfig;
 	/**
@@ -107,12 +100,6 @@ public class PlayConfigurationView implements Initializable {
 	private Spinner<Integer> gvalue;
 	@FXML
 	private Spinner<Double> hispeedmargin;
-	@FXML
-	private Spinner<Integer> inputduration;
-	@FXML
-	private Spinner<Integer> scrolldurationlow;
-	@FXML
-	private Spinner<Integer> scrolldurationhigh;
 
 	@FXML
 	private ComboBox<Integer> scoreop;
@@ -149,7 +136,7 @@ public class PlayConfigurationView implements Initializable {
 	private TextField soundpath;
 
 	@FXML
-	private Spinner<Integer> judgetiming;
+	private NumericSpinner<Integer> judgetiming;
 	@FXML
 	private CheckBox constant;
 	@FXML
@@ -174,6 +161,8 @@ public class PlayConfigurationView implements Initializable {
 	private CheckBox guidese;
 	@FXML
 	private CheckBox windowhold;
+	@FXML
+	private Spinner<Integer> extranotedepth;
 
 	@FXML
 	private CheckBox judgeregion;
@@ -197,17 +186,7 @@ public class PlayConfigurationView implements Initializable {
 	private ComboBox<Integer> autosavereplay4;
 
     @FXML
-    private CheckBox jkoc_hack;
-	@FXML
-	private CheckBox analogScratch;
-	@FXML
-	private ComboBox<Integer> analogScratchMode;
-	@FXML
-	private NumericSpinner<Integer> analogScratchThreshold;
-    @FXML
     private CheckBox usecim;
-    @FXML
-    private CheckBox useSongInfo;
 
     @FXML
 	private TextField txtTwitterConsumerKey;
@@ -235,7 +214,11 @@ public class PlayConfigurationView implements Initializable {
 	@FXML
 	private AudioConfigurationView audioController;
 	@FXML
+	private InputConfigurationView inputController;
+	@FXML
 	private ResourceConfigurationView resourceController;
+	@FXML
+	private MusicSelectConfigurationView musicselectController;
 	@FXML
 	private SkinConfigurationView skinController;
 	@FXML
@@ -245,8 +228,6 @@ public class PlayConfigurationView implements Initializable {
 
 	private Config config;
 	private PlayerConfig player;
-	@FXML
-	private CheckBox folderlamp;
 
 	private MainLoader loader;
 
@@ -254,7 +235,7 @@ public class PlayConfigurationView implements Initializable {
 
 	private RequestToken requestToken = null;
 
-	private void initComboBox(ComboBox<Integer> combo, final String[] values) {
+	static void initComboBox(ComboBox<Integer> combo, final String[] values) {
 		combo.setCellFactory((param) -> new OptionListCell(values));
 		combo.setButtonCell(new OptionListCell(values));
 		for (int i = 0; i < values.length; i++) {
@@ -269,7 +250,6 @@ public class PlayConfigurationView implements Initializable {
 		lr2configurationassist.setHgap(25);
 		lr2configurationassist.setVgap(4);
 
-		initComboBox(analogScratchMode, new String[] { "Ver. 2 (Newest)", "Ver. 1 (~0.6.9)" });
 
 		String[] scoreOptions = new String[] { "OFF", "MIRROR", "RANDOM", "R-RANDOM", "S-RANDOM", "SPIRAL", "H-RANDOM",
 				"ALL-SCR", "RANDOM-EX", "S-RANDOM-EX" };
@@ -282,7 +262,6 @@ public class PlayConfigurationView implements Initializable {
 		initComboBox(gaugeop, new String[] { "ASSIST EASY", "EASY", "NORMAL", "HARD", "EX-HARD", "HAZARD" });
 		initComboBox(fixhispeed, new String[] { "OFF", "START BPM", "MAX BPM", "MAIN BPM", "MIN BPM" });
 		playconfig.getItems().setAll(PlayMode.values());
-		inputconfig.getItems().setAll(PlayMode.values());
 		initComboBox(lntype, new String[] { "LONG NOTE", "CHARGE NOTE", "HELL CHARGE NOTE" });
 		initComboBox(gaugeautoshift, new String[] { "NONE", "CONTINUE", "SURVIVAL TO GROOVE","BEST CLEAR","SELECT TO UNDER" });
 		initComboBox(bottomshiftablegauge, new String[] { "ASSIST EASY", "EASY", "NORMAL" });
@@ -301,7 +280,8 @@ public class PlayConfigurationView implements Initializable {
 		initComboBox(autosavereplay2, autosaves);
 		initComboBox(autosavereplay3, autosaves);
 		initComboBox(autosavereplay4, autosaves);
-		
+
+		judgetiming.setValueFactoryValues(PlayerConfig.JUDGETIMING_MIN, PlayerConfig.JUDGETIMING_MAX, 0, 1);
 		resourceController.init(this);
 
 		newVersionCheck();
@@ -364,6 +344,7 @@ public class PlayConfigurationView implements Initializable {
 		players.getItems().setAll(PlayerConfig.readAllPlayerID(config.getPlayerpath()));
 		videoController.update(config);
 		audioController.update(config);
+		musicselectController.update(config);
 
 		bgmpath.setText(config.getBgmpath());
 		soundpath.setText(config.getSoundpath());
@@ -371,8 +352,6 @@ public class PlayConfigurationView implements Initializable {
 		resourceController.update(config);
 
 		showhiddennote.setSelected(config.isShowhiddennote());
-
-		judgealgorithm.setValue(JudgeAlgorithm.getIndex(config.getJudgeType()));
 
 		autosavereplay1.getSelectionModel().select(config.getAutoSaveReplay()[0]);
 		autosavereplay2.getSelectionModel().select(config.getAutoSaveReplay()[1]);
@@ -383,12 +362,6 @@ public class PlayConfigurationView implements Initializable {
         // int b = Boolean.valueOf(config.getJKOC()).compareTo(false);
 
         usecim.setSelected(config.isCacheSkinImage());
-        useSongInfo.setSelected(config.isUseSongInfo());
-
-		folderlamp.setSelected(config.isFolderlamp());
-
-		scrolldurationlow.getValueFactory().setValue(config.getScrollDurationLow());
-		scrolldurationhigh.getValueFactory().setValue(config.getScrollDurationHigh());
 
 		enableIpfs.setSelected(config.isEnableIpfs());
 		ipfsurl.setText(config.getIpfsUrl());
@@ -402,9 +375,7 @@ public class PlayConfigurationView implements Initializable {
 
 		try {
 			Class.forName("org.sqlite.JDBC");
-			SongDatabaseAccessor songdb = new SQLiteSongDatabaseAccessor(config.getSongpath(),
-					config.getBmsroot());
-			tableController.init(songdb);
+			tableController.init(MainLoader.getScoreDatabaseAccessor());
 			tableController.update(Paths.get(config.getTablepath() + "/" + "default.json"));
 		} catch (ClassNotFoundException e) {
 			e.printStackTrace();
@@ -440,6 +411,7 @@ public class PlayConfigurationView implements Initializable {
 		playername.setText(player.getName());
 
 		videoController.updatePlayer(player);
+		musicselectController.updatePlayer(player);
 
 		scoreop.getSelectionModel().select(player.getRandom());
 		scoreop2.getSelectionModel().select(player.getRandom2());
@@ -464,6 +436,8 @@ public class PlayConfigurationView implements Initializable {
 		hranthresholdbpm.getValueFactory().setValue(player.getHranThresholdBPM());
 		judgeregion.setSelected(player.isShowjudgearea());
 		markprocessednote.setSelected(player.isMarkprocessednote());
+		extranotedepth.getValueFactory().setValue(player.getExtranoteDepth());
+
 		target.setValue(player.getTarget());
 
 		irController.update(player);
@@ -476,10 +450,11 @@ public class PlayConfigurationView implements Initializable {
 			txtTwitterAuthenticated.setVisible(false);
 		}
 
+		pc = null;
 		playconfig.setValue(PlayMode.BEAT_7K);
 		updatePlayConfig();
-		inputconfig.setValue(PlayMode.BEAT_7K);
-		updateInputConfig();
+
+		inputController.update(player);
 		skinController.update(player);
 	}
 
@@ -489,6 +464,7 @@ public class PlayConfigurationView implements Initializable {
 	public void commit() {
 	    videoController.commit(config);
 		audioController.commit();
+		musicselectController.commit();
 
 		config.setPlayername(players.getValue());
 
@@ -499,32 +475,20 @@ public class PlayConfigurationView implements Initializable {
 
 		config.setShowhiddennote(showhiddennote.isSelected());
 
-		config.setJudgeType(JudgeAlgorithm.values()[judgealgorithm.getValue()].name());
 		config.setAutoSaveReplay( new int[]{autosavereplay1.getValue(),autosavereplay2.getValue(),
 				autosavereplay3.getValue(),autosavereplay4.getValue()});
 
         // jkoc_hack is integer but *.setJKOC needs boolean type
 
         config.setCacheSkinImage(usecim.isSelected());
-        config.setUseSongInfo(useSongInfo.isSelected());
-        config.setFolderlamp(folderlamp.isSelected());
-
-		config.setScrollDutationLow(getValue(scrolldurationlow));
-		config.setScrollDutationHigh(getValue(scrolldurationhigh));
 
 		config.setEnableIpfs(enableIpfs.isSelected());
 		config.setIpfsUrl(ipfsurl.getText());
 
 		commitPlayer();
 
-		Json json = new Json();
-		json.setOutputType(OutputType.json);
-		try (FileWriter fw = new FileWriter("config.json")) {
-			fw.write(json.prettyPrint(config));
-			fw.flush();
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
+		Config.write(config);
+
 		tableController.commit();
 	}
 
@@ -537,6 +501,7 @@ public class PlayConfigurationView implements Initializable {
 		}
 
 		videoController.commitPlayer(player);
+		musicselectController.commitPlayer();
 
 		player.setRandom(scoreop.getValue());
 		player.setRandom2(scoreop2.getValue());
@@ -558,15 +523,16 @@ public class PlayConfigurationView implements Initializable {
 		player.setNomine(nomine.isSelected());
 		player.setHranThresholdBPM(getValue(hranthresholdbpm));
 		player.setMarkprocessednote(markprocessednote.isSelected());
+		player.setExtranoteDepth(extranotedepth.getValue());
 
 		player.setShowjudgearea(judgeregion.isSelected());
 		player.setTarget(target.getValue());
 
+		inputController.commit();
 		irController.commit();
 
-		updateInputConfig();
 		updatePlayConfig();
-		skinController.update(player);
+		skinController.commit();
 
 		PlayerConfig.write(config.getPlayerpath(), player);
 	}
@@ -620,6 +586,8 @@ public class PlayConfigurationView implements Initializable {
 			conf.setEnablehidden(enableHidden.isSelected());
 			conf.setLift(getValue(lift) / 1000f);
 			conf.setHidden(getValue(hidden) / 1000f);
+			conf.setJudgetype(JudgeAlgorithm.values()[judgealgorithm.getValue()].name());
+
 		}
 		pc = playconfig.getValue();
 		PlayConfig conf = player.getPlayConfig(Mode.valueOf(pc.name())).getPlayconfig();
@@ -636,34 +604,7 @@ public class PlayConfigurationView implements Initializable {
 		enableHidden.setSelected(conf.isEnablehidden());
 		lift.getValueFactory().setValue((int) (conf.getLift() * 1000));
 		hidden.getValueFactory().setValue((int) (conf.getHidden() * 1000));
-	}
-
-	private PlayMode ic = null;
-
-    @FXML
-	public void updateInputConfig() {
-    	// TODO 各デバイス毎の最小入力間隔設定
-		if (ic != null) {
-			PlayModeConfig conf = player.getPlayConfig(Mode.valueOf(ic.name()));
-			conf.getKeyboardConfig().setDuration(getValue(inputduration));
-			for(ControllerConfig controller : conf.getController()) {
-				controller.setDuration(getValue(inputduration));
-				controller.setJKOC(jkoc_hack.isSelected());
-		        controller.setAnalogScratch(analogScratch.isSelected());
-		        controller.setAnalogScratchThreshold(analogScratchThreshold.getValue());
-		        controller.setAnalogScratchMode(analogScratchMode.getValue());
-			}
-		}
-		ic = inputconfig.getValue();
-		PlayModeConfig conf = player.getPlayConfig(Mode.valueOf(ic.name()));
-		inputduration.getValueFactory().setValue(conf.getKeyboardConfig().getDuration());
-		for(ControllerConfig controller : conf.getController()) {
-			inputduration.getValueFactory().setValue(controller.getDuration());
-	        jkoc_hack.setSelected(controller.getJKOC());
-	        analogScratch.setSelected(controller.isAnalogScratch());
-	        analogScratchMode.getSelectionModel().select(controller.getAnalogScratchMode());
-	        analogScratchThreshold.getValueFactory().setValue(controller.getAnalogScratchThreshold());
-		}
+		judgealgorithm.setValue(JudgeAlgorithm.getIndex(conf.getJudgetype()));
 	}
 
 	private <T> T getValue(Spinner<T> spinner) {
@@ -711,10 +652,8 @@ public class PlayConfigurationView implements Initializable {
 	public void loadBMS(String updatepath, boolean updateAll) {
 		commit();
 		try {
-			Class.forName("org.sqlite.JDBC");
-			SongDatabaseAccessor songdb = new SQLiteSongDatabaseAccessor(config.getSongpath(),
-					config.getBmsroot());
-			SongInformationAccessor infodb = useSongInfo.isSelected() ?
+			SongDatabaseAccessor songdb = MainLoader.getScoreDatabaseAccessor();
+			SongInformationAccessor infodb = config.isUseSongInfo() ?
 					new SongInformationAccessor(Paths.get("songinfo.db").toString()) : null;
 			Logger.getGlobal().info("song.db更新開始");
 			songdb.updateSongDatas(updatepath, updateAll, infodb);
@@ -759,48 +698,16 @@ public class PlayConfigurationView implements Initializable {
 			return;
 		}
 
-		final int[] clears = { 0, 1, 4, 5, 6, 8, 9 };
 		try {
 			Class.forName("org.sqlite.JDBC");
-			SongDatabaseAccessor songdb = new SQLiteSongDatabaseAccessor(config.getSongpath(),
-					config.getBmsroot());
+			SongDatabaseAccessor songdb = MainLoader.getScoreDatabaseAccessor();
 			String player = "player1";
 			ScoreDatabaseAccessor scoredb = new ScoreDatabaseAccessor(config.getPlayerpath() + "/" + player + "/score.db");
 			scoredb.createTable();
 
-			try (Connection con = DriverManager.getConnection("jdbc:sqlite:" + dir.getPath())) {
-				QueryRunner qr = new QueryRunner();
-				MapListHandler rh = new MapListHandler();
-				List<Map<String, Object>> scores = qr.query(con, "SELECT * FROM score", rh);
+			ScoreDataImporter scoreimporter = new ScoreDataImporter(scoredb);
+			scoreimporter.importFromLR2ScoreDatabase(dir.getPath(), songdb);
 
-				List<IRScoreData> result = new ArrayList<IRScoreData>();
-				for (Map<String, Object> score : scores) {
-					final String md5 = (String) score.get("hash");
-					SongData[] song = songdb.getSongDatas(new String[] { md5 });
-					if (song.length > 0) {
-						IRScoreData sd = new IRScoreData();
-						sd.setEpg((int) score.get("perfect"));
-						sd.setEgr((int) score.get("great"));
-						sd.setEgd((int) score.get("good"));
-						sd.setEbd((int) score.get("bad"));
-						sd.setEpr((int) score.get("poor"));
-						sd.setMinbp((int) score.get("minbp"));
-						sd.setClear(clears[(int) score.get("clear")]);
-						sd.setPlaycount((int) score.get("playcount"));
-						sd.setClearcount((int) score.get("clearcount"));
-						sd.setNotes(song[0].getNotes());
-						sd.setSha256(song[0].getSha256());
-						IRScoreData oldsd = scoredb.getScoreData(sd.getSha256(), 0);
-						sd.setScorehash("LR2");
-						if (oldsd == null || oldsd.getClear() <= sd.getClear()) {
-							result.add(sd);
-						}
-					}
-				}
-				scoredb.setScoreData(result.toArray(new IRScoreData[result.size()]));
-			} catch (Exception e) {
-				Logger.getGlobal().severe("スコア移行時の例外:" + e.getMessage());
-			}
 		} catch (ClassNotFoundException e1) {
 		}
 

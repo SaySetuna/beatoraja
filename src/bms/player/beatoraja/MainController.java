@@ -1,28 +1,27 @@
 package bms.player.beatoraja;
 
-
 import java.io.*;
-import java.nio.file.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.logging.Logger;
 import java.util.stream.Stream;
 
 import org.lwjgl.input.Mouse;
 
-import com.badlogic.gdx.ApplicationAdapter;
-import com.badlogic.gdx.Gdx;
-import com.badlogic.gdx.Graphics;
-import com.badlogic.gdx.InputMultiplexer;
+import com.badlogic.gdx.*;
 import com.badlogic.gdx.graphics.*;
 import com.badlogic.gdx.graphics.g2d.*;
 import com.badlogic.gdx.graphics.g2d.freetype.FreeTypeFontGenerator;
 import com.badlogic.gdx.graphics.g2d.freetype.FreeTypeFontGenerator.FreeTypeFontParameter;
-import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.utils.*;
 import com.badlogic.gdx.utils.StringBuilder;
 
 import bms.player.beatoraja.MainState.MainStateType;
+import bms.player.beatoraja.MessageRenderer.Message;
+import bms.player.beatoraja.PlayerConfig.IRConfig;
 import bms.player.beatoraja.PlayerResource.PlayMode;
 import bms.player.beatoraja.audio.*;
 import bms.player.beatoraja.config.KeyConfiguration;
@@ -51,7 +50,7 @@ import bms.tool.mdprocessor.MusicDownloadProcessor;
  */
 public class MainController extends ApplicationAdapter {
 
-	public static final String VERSION = "beatoraja 0.7.1";
+	public static final String VERSION = "beatoraja 0.7.4";
 
 	public static final boolean debug = false;
 
@@ -90,7 +89,6 @@ public class MainController extends ApplicationAdapter {
 	private PlayMode auto;
 	private boolean songUpdated;
 
-	private SongDatabaseAccessor songdb;
 	private SongInformationAccessor infodb;
 
 	private IRStatus[] ir;
@@ -155,7 +153,6 @@ public class MainController extends ApplicationAdapter {
 		}
 		try {
 			Class.forName("org.sqlite.JDBC");
-			songdb = new SQLiteSongDatabaseAccessor(config.getSongpath(), config.getBmsroot());
 			if(config.isUseSongInfo()) {
 				infodb = new SongInformationAccessor(config.getSonginfopath());
 			}
@@ -181,7 +178,7 @@ public class MainController extends ApplicationAdapter {
 			}
 			
 			if(ir != null) {
-				irarray.add(new IRStatus(irconfig.getIrname(), irconfig.getIrsend(), ir));
+				irarray.add(new IRStatus(irconfig, ir));
 			}
 		}
 		ir = irarray.toArray(IRStatus.class);
@@ -205,7 +202,7 @@ public class MainController extends ApplicationAdapter {
 	}
 
 	public SongDatabaseAccessor getSongDatabase() {
-		return songdb;
+		return MainLoader.getScoreDatabaseAccessor();
 	}
 
 	public SongInformationAccessor getInfoDatabase() {
@@ -272,7 +269,9 @@ public class MainController extends ApplicationAdapter {
 				current.setSkin(null);
 			}
 			newState.create();
-			newState.getSkin().prepare(newState);
+			if(newState.getSkin() != null) {
+				newState.getSkin().prepare(newState);				
+			}
 			current = newState;
 			starttime = System.nanoTime();
 			nowmicrotime = ((System.nanoTime() - starttime) / 1000);
@@ -283,6 +282,10 @@ public class MainController extends ApplicationAdapter {
 		} else {
 			Gdx.input.setInputProcessor(input.getKeyBoardInputProcesseor());
 		}
+	}
+	
+	public MainState getCurrentState() {
+		return current;
 	}
 
 	public void setPlayMode(PlayMode auto) {
@@ -809,18 +812,35 @@ public class MainController extends ApplicationAdapter {
 		}
 	}
 
+	/**
+	 * BGM、効果音セット管理用クラス
+	 * 
+	 * @author exch
+	 */
 	public static class SystemSoundManager {
+		/**
+		 * 検出されたBGMセットのディレクトリパス
+		 */
 		private Array<Path> bgms = new Array<Path>();
+		/**
+		 * 現在のBGMセットのディレクトリパス
+		 */
 		private Path currentBGMPath;
+		/**
+		 * 検出された効果音セットのディレクトリパス
+		 */
 		private Array<Path> sounds = new Array<Path>();
+		/**
+		 * 現在の効果音セットのディレクトリパス
+		 */
 		private Path currentSoundPath;
 
 		public SystemSoundManager(Config config) {
 			if(config.getBgmpath() != null && config.getBgmpath().length() > 0) {
-				scan(Paths.get(config.getBgmpath()), bgms, "select.");				
+				scan(Paths.get(config.getBgmpath()), bgms, "select.wav");				
 			}
 			if(config.getSoundpath() != null && config.getSoundpath().length() > 0) {
-				scan(Paths.get(config.getSoundpath()), sounds, "clear.");				
+				scan(Paths.get(config.getSoundpath()), sounds, "clear.wav");				
 			}
 			Logger.getGlobal().info("検出されたBGM Set : " + bgms.size + " Sound Set : " + sounds.size);
 		}
@@ -849,127 +869,22 @@ public class MainController extends ApplicationAdapter {
 					sub.forEach((t) -> {
 						scan(t, paths, name);
 					});
+					if (AudioDriver.getPaths(p.resolve(name).toString()).length > 0) {
+						paths.add(p);
+					}
 				} catch (IOException e) {
 				}
-			} else if (p.getFileName().toString().toLowerCase().equals(name + "wav") ||
-					p.getFileName().toString().toLowerCase().equals(name + "ogg")) {
-				paths.add(p.getParent());
-			}
-
+			} 
 		}
 	}
 
-	/**
-	 * メッセージ描画用クラス。
-	 *
-	 * @author exch
-	 */
-	public static class MessageRenderer implements Disposable  {
-
-		private FreeTypeFontGenerator generator;
-		private final Array<Message> messages = new Array<Message>();
-
-		public MessageRenderer() {
-			try {
-				generator = new FreeTypeFontGenerator(Gdx.files.internal("skin/default/VL-Gothic-Regular.ttf"));				
-			} catch (GdxRuntimeException e) {
-				Logger.getGlobal().severe("Message Font読み込み失敗");
-			}
-		}
-
-		public void render(MainState state, SpriteBatch sprite, int x, int y) {
-			for(int i = messages.size - 1, dy = 0;i >= 0;i--) {
-				final Message message = messages.get(i);
-
-				if(message.time < System.currentTimeMillis()) {
-					message.dispose();
-					messages.removeIndex(i);
-				} else {
-					message.draw(state, sprite, x, y - dy);
-					dy+=24;
-				}
-			}
-		}
-
-		public Message addMessage(String text, Color color, int type) {
-			return addMessage(text, 24 * 60 * 60 * 1000 , color, type);
-		}
-
-		public Message addMessage(String text, int time, Color color, int type) {
-			Message message = new Message(text, time, color, type);
-			if(generator != null) {
-				Gdx.app.postRunnable(() -> {
-					message.init(generator);
-					messages.add(message);
-				});
-			}
-			return message;
-		}
-
-		@Override
-		public void dispose() {
-			generator.dispose();
-		}
-	}
-
-	/**
-	 * MessageRendererで描画されるメッセージ
-	 *
-	 * @author exch
-	 */
-	public static class Message implements Disposable {
-
-		private BitmapFont font;
-		private long time;
-		private String text;
-		private final Color color;
-		private final int type;
-
-		public Message(String text, long time, Color color, int type) {
-			this.time = time + System.currentTimeMillis();
-			this.text = text;
-			this.color = color;
-			this.type = type;
-		}
-
-		public void init(FreeTypeFontGenerator generator) {
-			FreeTypeFontParameter parameter = new FreeTypeFontParameter();
-			parameter.size = 24;
-			parameter.characters += text;
-			font = generator.generateFont(parameter);
-			font.setColor(color);
-		}
-
-		public void setText(String text) {
-			this.text = text;
-		}
-
-		public void stop() {
-			time = -1;
-		}
-
-		public void draw(MainState state, SpriteBatch sprite, int x, int y) {
-			if(type != 1 || state instanceof MusicSelector) {
-				font.setColor(color.r, color.g, color.b, MathUtils.sinDeg((System.currentTimeMillis() % 1440) / 4.0f) * 0.3f + 0.7f);
-				font.draw(sprite, text, x, y);
-			}
-		}
-
-		@Override
-		public void dispose() {
-			font.dispose();
-		}
-	}
-	
 	public static class IRStatus {
 		
-		public final String name;
-		public final int send;
+		public final IRConfig config;
 		public final IRConnection connection;
 		
-		public IRStatus(String name, int send, IRConnection connection) {
-			this.name = name;
-			this.send = send;
+		public IRStatus(IRConfig config, IRConnection connection) {
+			this.config = config;
 			this.connection = connection;
 		}
 	}

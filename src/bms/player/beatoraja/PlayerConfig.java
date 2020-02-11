@@ -1,8 +1,6 @@
 package bms.player.beatoraja;
 
-import java.io.FileReader;
-import java.io.FileWriter;
-import java.io.IOException;
+import java.io.*;
 import java.nio.file.*;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
@@ -13,6 +11,7 @@ import javax.crypto.*;
 import javax.crypto.spec.SecretKeySpec;
 
 import bms.player.beatoraja.ir.IRConnectionManager;
+import bms.player.beatoraja.pattern.MineNoteModifier;
 import bms.player.beatoraja.play.GrooveGauge;
 import bms.player.beatoraja.play.TargetProperty;
 import bms.player.beatoraja.select.BarSorter;
@@ -59,6 +58,9 @@ public class PlayerConfig {
 	 * 判定タイミング
 	 */
 	private int judgetiming = 0;
+	
+	public static final int JUDGETIMING_MAX = 500;
+	public static final int JUDGETIMING_MIN = -500;
 
     /**
      * 選曲時のモードフィルター
@@ -89,10 +91,16 @@ public class PlayerConfig {
 	 * アシストオプション:地雷除去
 	 */
 	private boolean nomine = false;
+
+	private int mineMode = 0;
 	/**
 	 * アシストオプション:BPMガイド
 	 */
 	private boolean bpmguide = false;
+
+	private int extranoteType = 0;
+	private int extranoteDepth = 0;
+	private boolean extranoteScratch = false;
 
 	private boolean showjudgearea = false;
 
@@ -136,6 +144,11 @@ public class PlayerConfig {
 	 * Window Hold
 	 */
 	private boolean isWindowHold = false;
+	
+	/**
+	 * Enable folder random select bar
+	 */
+	private boolean isRandomSelect = false;
 
 	private SkinConfig[] skin = new SkinConfig[SkinType.getMaxSkinTypeID() + 1];
 	private SkinConfig[] skinHistory;
@@ -163,14 +176,6 @@ public class PlayerConfig {
 	 * 選曲時でのキー入力方式
 	 */
 	private int musicselectinput = 0;
-
-	private String irname = "";
-
-	private String userid = "";
-
-	private String password = "";
-
-	private int irsend = 0;
 
 	public static final int IR_SEND_ALWAYS = 0;
 	public static final int IR_SEND_COMPLETE_SONG = 1;
@@ -292,6 +297,30 @@ public class PlayerConfig {
 
 	public void setLegacynote(boolean legacynote) {
 		this.legacynote = legacynote;
+	}
+
+	public int getExtranoteDepth() {
+		return extranoteDepth;
+	}
+
+	public void setExtranoteDepth(int extranoteDepth) {
+		this.extranoteDepth = extranoteDepth;
+	}
+
+	public int getExtranoteType() {
+		return extranoteType;
+	}
+
+	public void setExtranoteType(int extranoteType) {
+		this.extranoteType = extranoteType;
+	}
+
+	public boolean isExtranoteScratch() {
+		return extranoteScratch;
+	}
+
+	public void setExtranoteScratch(boolean extranoteScratch) {
+		this.extranoteScratch = extranoteScratch;
 	}
 
 	public boolean isShowjudgearea() {
@@ -464,38 +493,6 @@ public class PlayerConfig {
 		this.skinHistory = skinHistory;
 	}
 
-	public String getUserid() {
-		return userid;
-	}
-
-	public void setUserid(String userid) {
-		this.userid = userid;
-	}
-
-	public String getPassword() {
-		return password;
-	}
-
-	public void setPassword(String password) {
-		this.password = password;
-	}
-
-	public String getIrname() {
-		return irname;
-	}
-
-	public void setIrname(String irname) {
-		this.irname = irname;
-	}
-
-	public int getIrsend() {
-		return irsend;
-	}
-
-	public void setIrsend(int irsend) {
-		this.irsend = irsend;
-	}
-
 	public IRConfig[] getIrconfig() {
 		return irconfig;
 	}
@@ -572,6 +569,14 @@ public class PlayerConfig {
 
 	public void setWindowHold(boolean isWindowHold) {
 		this.isWindowHold = isWindowHold;
+	}
+	
+	public boolean isRandomSelect() {
+		return isRandomSelect;
+	}
+	
+	public void setRandomSelect(boolean isRandomSelect) {
+		this.isRandomSelect = isRandomSelect;
 	}
 
 	public String getId() {
@@ -668,7 +673,7 @@ public class PlayerConfig {
 		random2 = MathUtils.clamp(random2, 0, 9);
 		doubleoption = MathUtils.clamp(doubleoption, 0, 3);
 		target = MathUtils.clamp(target, 0, TargetProperty.getAllTargetProperties().length);
-		judgetiming = MathUtils.clamp(judgetiming, -100, 100);
+		judgetiming = MathUtils.clamp(judgetiming, JUDGETIMING_MIN, JUDGETIMING_MAX);
 		misslayerDuration = MathUtils.clamp(misslayerDuration, 0, 5000);
 		lnmode = MathUtils.clamp(lnmode, 0, 2);
 		judgewindowrate = MathUtils.clamp(judgewindowrate, 10, 400);
@@ -676,21 +681,16 @@ public class PlayerConfig {
 		sevenToNinePattern = MathUtils.clamp(sevenToNinePattern, 0, 6);
 		sevenToNineType = MathUtils.clamp(sevenToNineType, 0, 2);
 
-		irsend = MathUtils.clamp(irsend, 0, 2);
-		if(irconfig == null) {
-			irconfig = new IRConfig[0];
-		}
-		
-		if(irconfig.length == 0) {
-			irconfig = new IRConfig[1];
-			IRConfig ir = new IRConfig();
-			ir.setIrname(irname != null && irname.length() > 0 ? irname : "mocha");
-			ir.setPassword(password);
-			ir.setUserid(userid);
-			ir.setIrsend(irsend);
-			irconfig[0] = ir;
-			irname = password = userid = "";
-			irsend = 0;
+		mineMode = MathUtils.clamp(mineMode, 0, MineNoteModifier.Mode.values().length);
+		extranoteDepth = MathUtils.clamp(extranoteDepth, 0, 100);
+
+		if(irconfig == null || irconfig.length == 0) {
+			String[] irnames = IRConnectionManager.getAllAvailableIRConnectionName();
+			irconfig = new IRConfig[irnames.length];
+			for(int i = 0;i < irnames.length;i++) {
+				irconfig[i] = new IRConfig();
+				irconfig[i].setIrname(irnames[i]);
+			}
 		}
 		
 		for(int i = 0;i < irconfig.length;i++) {
@@ -770,11 +770,10 @@ public class PlayerConfig {
 
 	public static PlayerConfig readPlayerConfig(String playerpath, String playerid) {
 		PlayerConfig player = new PlayerConfig();
-		Path p = Paths.get(playerpath + "/" + playerid + "/config.json");
-		Json json = new Json();
-		try {
+		try (FileReader reader = new FileReader(Paths.get(playerpath + "/" + playerid + "/config.json").toFile())) {
+			Json json = new Json();
 			json.setIgnoreUnknownFields(true);
-			player = json.fromJson(PlayerConfig.class, new FileReader(p.toFile()));
+			player = json.fromJson(PlayerConfig.class, reader);
 			player.setId(playerid);
 			player.validate();
 		} catch(Throwable e) {
@@ -784,17 +783,25 @@ public class PlayerConfig {
 	}
 
 	public static void write(String playerpath, PlayerConfig player) {
-		Json json = new Json();
-		json.setOutputType(JsonWriter.OutputType.json);
-		Path p = Paths.get(playerpath + "/" + player.getId() + "/config.json");
-		try (FileWriter fw = new FileWriter(p.toFile())) {
-			fw.write(json.prettyPrint(player));
-			fw.flush();
+		try (FileWriter writer = new FileWriter(Paths.get(playerpath + "/" + player.getId() + "/config.json").toFile())) {
+			Json json = new Json();
+			json.setOutputType(JsonWriter.OutputType.json);
+			json.setUsePrototypes(false);
+			writer.write(json.prettyPrint(player));
+			writer.flush();
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
 	}
-	
+
+	public int getMineMode() {
+		return mineMode;
+	}
+
+	public void setMineMode(int mineMode) {
+		this.mineMode = mineMode;
+	}
+
 	public static class IRConfig implements Validatable{
 		private String irname = "";
 
@@ -807,6 +814,10 @@ public class PlayerConfig {
 		private String cpassword = "";
 
 		private int irsend = 0;
+		
+		private boolean importscore = false;
+		
+		private boolean importrival = true;
 		
 		private static final String KEY = "0123456789abcdef";
 
@@ -868,6 +879,22 @@ public class PlayerConfig {
 			this.irsend = irsend;
 		}
 		
+		public boolean isImportscore() {
+			return importscore;
+		}
+
+		public void setImportscore(boolean importscore) {
+			this.importscore = importscore;
+		}
+
+		public boolean isImportrival() {
+			return importrival;
+		}
+
+		public void setImportrival(boolean importrival) {
+			this.importrival = importrival;
+		}
+
 		public boolean validate() {
 			if(irname == null || irname.length() == 0 || IRConnectionManager.getIRConnectionClass(irname) == null) {
 				return false;

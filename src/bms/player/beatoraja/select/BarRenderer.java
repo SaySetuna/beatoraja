@@ -2,7 +2,11 @@ package bms.player.beatoraja.select;
 
 import java.io.BufferedInputStream;
 import java.nio.file.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.logging.Logger;
+import java.util.stream.Stream;
 
 import bms.player.beatoraja.input.BMSPlayerInputProcessor;
 import bms.player.beatoraja.input.KeyCommand;
@@ -64,8 +68,6 @@ public class BarRenderer {
 	private Array<SearchWordBar> search = new Array<SearchWordBar>();
 
 	private final String[] TROPHY = { "goldmedal", "silvermedal", "bronzemedal" };
-
-	private final int SEARCHBAR_MAXCOUNT = 10;
 
 	private int durationlow = 300;
 	private int durationhigh = 50;
@@ -310,7 +312,7 @@ public class BarRenderer {
 				break;
 			}
 		}
-		if (search.size >= SEARCHBAR_MAXCOUNT) {
+		if (search.size >= select.main.getConfig().getMaxSearchBarCount()) {
 			search.removeIndex(0);
 		}
 		search.add(bar);
@@ -390,6 +392,8 @@ public class BarRenderer {
 					ba.value = 6;
 				} else if (sd instanceof CommandBar || sd instanceof ContainerBar) {
 					ba.value = 5;
+				} else if (sd instanceof ExecutableBar) {
+					ba.value = 2;
 				} else {
 					ba.value = -1;
 				}
@@ -447,11 +451,11 @@ public class BarRenderer {
 			for (char c : charset) {
 				chars[i++] = c;
 			}
-			if(baro.getText(0) != null) {
-				baro.getText(0).prepareFont(String.valueOf(chars));				
-			}
-			if(baro.getText(1) != null) {
-				baro.getText(1).prepareFont(String.valueOf(chars));				
+			
+			for(int index = 0;index < SkinBar.BARTEXT_COUNT;index++) {
+				if(baro.getText(index) != null) {
+					baro.getText(index).prepareFont(String.valueOf(chars));				
+				}				
 			}
 		}
 
@@ -746,7 +750,10 @@ public class BarRenderer {
 	public boolean updateBar(Bar bar) {
 		Bar prevbar = currentsongs != null ? currentsongs[selectedindex] : null;
 		Array<Bar> l = new Array<Bar>();
-		if (bar == null) {
+
+		if (MainLoader.getIllegalSongCount() > 0) {
+			l.addAll(SongBar.toSongBarArray(select.getSongDatabase().getSongDatas(MainLoader.getIllegalSongs())));
+		} else if (bar == null) {
 			if (dir.size > 0) {
 				prevbar = dir.first();
 			}
@@ -767,15 +774,26 @@ public class BarRenderer {
 			l.addAll(((DirectoryBar) bar).getChildren());
 		}
 
+		if(!select.main.getConfig().isShowNoSongExistingBar()) {
+			Array<Bar> remove = new Array<Bar>();
+			for (Bar b : l) {
+				if ((b instanceof SongBar && !((SongBar) b).existsSong())
+					|| b instanceof GradeBar && !((GradeBar) b).existsAllSongs()) {
+					remove.add(b);
+				}
+			}
+			l.removeAll(remove, true);
+		}
+
 		if (l.size > 0) {
 			final PlayerConfig config = select.main.getPlayerResource().getPlayerConfig();
 			int modeIndex = 0;
 			for(;modeIndex < MusicSelector.MODE.length && MusicSelector.MODE[modeIndex] != config.getMode();modeIndex++);
 			for(int trialCount = 0; trialCount < MusicSelector.MODE.length; trialCount++, modeIndex++) {
-				config.setMode(MusicSelector.MODE[modeIndex % MusicSelector.MODE.length]);
+				final Mode mode = MusicSelector.MODE[modeIndex % MusicSelector.MODE.length];
+				config.setMode(mode);
 				Array<Bar> remove = new Array<Bar>();
 				for (Bar b : l) {
-					final Mode mode = select.main.getPlayerResource().getPlayerConfig().getMode();
 					if (mode != null && b instanceof SongBar && ((SongBar) b).getSongData().getMode() != 0 &&
 							((SongBar) b).getSongData().getMode() != mode.id) {
 						remove.add(b);
@@ -801,8 +819,21 @@ public class BarRenderer {
 				}
 			}
 			Sort.instance().sort(newcurrentsongs, BarSorter.values()[select.getSort()]);
+			
+			List<Bar> bars = new ArrayList<Bar>();
+			if (select.main.getPlayerConfig().isRandomSelect()) {
+				SongData[] randomTargets = Stream.of(newcurrentsongs).filter(
+						songBar -> songBar instanceof SongBar && ((SongBar) songBar).getSongData().getPath() != null)
+						.map(songBar -> ((SongBar) songBar).getSongData()).toArray(SongData[]::new);
+				if (randomTargets.length >= 2) {
+					Bar randomBar = new ExecutableBar(randomTargets, select.main.getCurrentState());
+					bars.add(randomBar);
+				}
+			}
 
-			currentsongs = newcurrentsongs;
+			bars.addAll(Arrays.asList(newcurrentsongs));
+
+			currentsongs = bars.toArray(new Bar[] {});
 			bartextupdate = true;
 
 			selectedindex = 0;

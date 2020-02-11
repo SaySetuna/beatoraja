@@ -6,18 +6,24 @@ import static bms.player.beatoraja.skin.SkinProperty.*;
 import java.io.*;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.logging.Logger;
 
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
-import com.badlogic.gdx.utils.*;
+import com.badlogic.gdx.utils.IntIntMap;
+import com.badlogic.gdx.utils.IntMap;
+import com.badlogic.gdx.utils.Json;
+import com.badlogic.gdx.utils.ObjectMap;
 
 import bms.player.beatoraja.*;
+import bms.player.beatoraja.config.KeyConfigurationSkin;
 import bms.player.beatoraja.config.SkinConfigurationSkin;
 import bms.player.beatoraja.decide.MusicDecideSkin;
 import bms.player.beatoraja.play.*;
+import bms.player.beatoraja.play.bga.BGAProcessor;
 import bms.player.beatoraja.result.*;
 import bms.player.beatoraja.select.*;
 import bms.player.beatoraja.skin.*;
@@ -26,6 +32,11 @@ import bms.player.beatoraja.skin.SkinObject.*;
 import bms.player.beatoraja.skin.lua.SkinLuaAccessor;
 import bms.player.beatoraja.skin.property.*;
 
+/**
+ * JSONスキンローダー
+ * 
+ * @author exch
+ */
 public class JSONSkinLoader extends SkinLoader {
 
 	private Resolution dstr;
@@ -34,7 +45,7 @@ public class JSONSkinLoader extends SkinLoader {
 
 	protected JsonSkin.Skin sk;
 
-	Map<String, Texture> texmap;
+	Map<String, SourceData> sourceMap;
 	Map<String, SkinTextBitmap.SkinTextBitmapSource> bitmapSourceMap;
 
 	protected final SkinLuaAccessor lua;
@@ -42,6 +53,16 @@ public class JSONSkinLoader extends SkinLoader {
 	protected ObjectMap<String, String> filemap = new ObjectMap();
 
 	protected JsonSkinSerializer serializer;
+	
+	private static class SourceData {
+		public final String path;
+		public boolean loaded = false;
+		public Object data;
+		
+		public SourceData(String path) {
+			this.path = path;
+		}
+	}
 
 	/**
 	 * ヘッダの読み込みに使われるコンストラクタ
@@ -88,7 +109,7 @@ public class JSONSkinLoader extends SkinLoader {
 			sk = json.fromJson(JsonSkin.Skin.class, new FileReader(p.toFile()));
 			header = loadJsonSkinHeader(sk, p);
 		} catch (FileNotFoundException e) {
-			e.printStackTrace();
+			Logger.getGlobal().severe("JSONスキンファイルが見つかりません : " + p.toString());
 		}
 		return header;
 	}
@@ -133,6 +154,7 @@ public class JSONSkinLoader extends SkinLoader {
 					case PLAY_14KEYS:
 					case PLAY_24KEYS:
 					case PLAY_24KEYS_DOUBLE:
+					default:
 						offsetLengthAddition = 4;
 				}
 				SkinHeader.CustomOffset[] offsets = new SkinHeader.CustomOffset[sk.offset.length + offsetLengthAddition];
@@ -148,6 +170,7 @@ public class JSONSkinLoader extends SkinLoader {
 					case PLAY_14KEYS:
 					case PLAY_24KEYS:
 					case PLAY_24KEYS_DOUBLE:
+					default:
 						offsets[sk.offset.length + 0] = new SkinHeader.CustomOffset("All offset(%)", SkinProperty.OFFSET_ALL, true, true, true, true, false, false);
 
 						offsets[sk.offset.length + 1] = new SkinHeader.CustomOffset("Notes offset", SkinProperty.OFFSET_NOTES_1P, false, false, false, true, false, false);
@@ -167,6 +190,10 @@ public class JSONSkinLoader extends SkinLoader {
 		serializer = new JsonSkinSerializer(lua, path -> getPath(path, filemap));
 		Skin skin = null;
 		SkinHeader header = loadHeader(p);
+		if(header == null) {
+			return null;
+		}
+
 		try {
 			Json json = new Json();
 			json.setIgnoreUnknownFields(true);
@@ -180,6 +207,9 @@ public class JSONSkinLoader extends SkinLoader {
 			sk = json.fromJson(JsonSkin.Skin.class, new FileReader(p.toFile()));
 			skin = loadJsonSkin(header, sk, type, property, p);
 		} catch (FileNotFoundException e) {
+			Logger.getGlobal().severe("JSONスキンファイルが見つかりません : " + p.toString());
+		} catch (Throwable e) {
+			Logger.getGlobal().severe("何らかの原因でJSONスキンファイルの読み込みに失敗しました");
 			e.printStackTrace();
 		}
 		return skin;
@@ -254,7 +284,7 @@ public class JSONSkinLoader extends SkinLoader {
 				}
 			}
 
-			texmap = new HashMap<>();
+			sourceMap = new HashMap<>();
 			bitmapSourceMap = new HashMap<>();
 
 			if (type.isPlay()) {
@@ -264,23 +294,28 @@ public class JSONSkinLoader extends SkinLoader {
 				((PlaySkin) skin).setPlaystart(sk.playstart);
 				((PlaySkin) skin).setJudgetimer(sk.judgetimer);
 				((PlaySkin) skin).setFinishMargin(sk.finishmargin);
-			}
-			if (type == SkinType.MUSIC_SELECT) {
+			} else switch(type) {
+			case MUSIC_SELECT:
 				skin = new MusicSelectSkin(src, dstr);
-			}
-			if (type == SkinType.DECIDE) {
+				break;
+			case DECIDE:
 				skin = new MusicDecideSkin(src, dstr);
-			}
-			if (type == SkinType.RESULT) {
+				break;
+			case RESULT:
 				skin = new MusicResultSkin(src, dstr);
-			}
-			if (type == SkinType.COURSE_RESULT) {
+				break;
+			case COURSE_RESULT:
 				skin = new CourseResultSkin(src, dstr);
-			}
-			if (type == SkinType.SKIN_SELECT) {
+				break;
+			case SKIN_SELECT:
 				skin = new SkinConfigurationSkin(src, dstr);
+				break;
+			case KEY_CONFIG:
+			default:
+				skin = new KeyConfigurationSkin(src, dstr);
+				break;				
 			}
-
+			
 			IntIntMap op = new IntIntMap();
 			for (JsonSkin.Property pr : sk.property) {
 				int pop = 0;
@@ -314,6 +349,10 @@ public class JSONSkinLoader extends SkinLoader {
 			skin.setFadeout(sk.fadeout);
 			skin.setInput(sk.input);
 			skin.setScene(sk.scene);
+			
+			for(JsonSkin.Source source : sk.source) {
+				sourceMap.put(source.id, new SourceData(source.path));
+			}
 
 			for (JsonSkin.Destination dst : sk.destination) {
 				SkinObject obj = null;
@@ -328,30 +367,35 @@ public class JSONSkinLoader extends SkinLoader {
 				if (obj == null) {
 					for (JsonSkin.Image img : sk.image) {
 						if (dst.id.equals(img.id)) {
-							Texture tex = getTexture(img.src, p);
-
-							if (img.len > 1) {
-								TextureRegion[] srcimg = getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx,
-										img.divy);
-								TextureRegion[][] tr = new TextureRegion[img.len][];
-								for (int i = 0; i < tr.length; i++) {
-									tr[i] = new TextureRegion[srcimg.length / img.len];
-									for (int j = 0; j < tr[i].length; j++) {
-										tr[i][j] = srcimg[i * tr[i].length + j];
+							Object data = getSource(img.src, p);
+							
+							if(data instanceof SkinSourceMovie) {
+								obj = new SkinImage((SkinSourceMovie)data);
+							} else if(data instanceof Texture) {
+								Texture tex = (Texture) data;
+								if (img.len > 1) {
+									TextureRegion[] srcimg = getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx,
+											img.divy);
+									TextureRegion[][] tr = new TextureRegion[img.len][];
+									for (int i = 0; i < tr.length; i++) {
+										tr[i] = new TextureRegion[srcimg.length / img.len];
+										for (int j = 0; j < tr[i].length; j++) {
+											tr[i][j] = srcimg[i * tr[i].length + j];
+										}
 									}
+									SkinImage si = new SkinImage(tr, img.timer, img.cycle);
+									si.setReferenceID(img.ref);
+									obj = si;
+								} else {
+									obj = new SkinImage(getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx, img.divy),
+											img.timer, img.cycle);
 								}
-								SkinImage si = new SkinImage(tr, img.timer, img.cycle);
-								si.setReferenceID(img.ref);
-								obj = si;
-							} else {
-								obj = new SkinImage(getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx, img.divy),
-										img.timer, img.cycle);
-							}
-							if (img.act != null) {
+							} 
+							
+							if (obj != null && img.act != null) {
 								obj.setClickevent(img.act);
 								obj.setClickeventType(img.click);
-							}
-
+							}								
 							break;
 						}
 					}
@@ -364,12 +408,14 @@ public class JSONSkinLoader extends SkinLoader {
 								for (JsonSkin.Image img : sk.image) {
 									if (img.id.equals(imgs.images[i])) {
 										Texture tex = getTexture(img.src, p);
-										tr[i] = getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx, img.divy);
-										if (timer == null) {
-											timer = img.timer;
-										}
-										if (cycle == -1) {
-											cycle = img.cycle;
+										if(tex != null) {
+											tr[i] = getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx, img.divy);
+											if (timer == null) {
+												timer = img.timer;
+											}
+											if (cycle == -1) {
+												cycle = img.cycle;
+											}											
 										}
 										break;
 									}
@@ -411,10 +457,10 @@ public class JSONSkinLoader extends SkinLoader {
 
 								SkinNumber num = null;
 								if(value.value != null) {
-									num = new SkinNumber(pn, mn, value.timer, value.cycle, value.digit, value.zeropadding,
+									num = new SkinNumber(pn, mn, value.timer, value.cycle, value.digit, value.zeropadding, value.space,
 											value.value);
 								} else {
-									num = new SkinNumber(pn, mn, value.timer, value.cycle, value.digit, value.zeropadding,
+									num = new SkinNumber(pn, mn, value.timer, value.cycle, value.digit, value.zeropadding, value.space,
 											value.ref);
 								}
 
@@ -444,10 +490,10 @@ public class JSONSkinLoader extends SkinLoader {
 								SkinNumber num = null;
 								if(value.value != null) {
 									num = new SkinNumber(nimages, value.timer, value.cycle, value.digit,
-											d > 10 ? 2 : value.padding, value.value);
+											d > 10 ? 2 : value.padding, value.space, value.value);
 								} else {
 									num = new SkinNumber(nimages, value.timer, value.cycle, value.digit,
-											d > 10 ? 2 : value.padding, value.ref);
+											d > 10 ? 2 : value.padding, value.space, value.ref);
 								}
 								num.setAlign(value.align);
 								if(value.offset != null) {
@@ -486,21 +532,24 @@ public class JSONSkinLoader extends SkinLoader {
 						if (dst.id.equals(img.id)) {
 							Texture tex = getTexture(img.src, p);
 
-							if(img.value != null) {
-								obj = new SkinSlider(getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx, img.divy),
-										img.timer, img.cycle, img.angle, (int) ((img.angle == 1 || img.angle == 3
-												? ((float)dstr.width / sk.w) : ((float)dstr.height / sk.h)) * img.range),
-										img.value, img.event);
-							} else if(img.isRefNum) {
-								obj = new SkinSlider(getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx, img.divy),
-										img.timer, img.cycle, img.angle, (int) ((img.angle == 1 || img.angle == 3
-												? ((float)dstr.width / sk.w) : ((float)dstr.height / sk.h)) * img.range),
-										img.type, img.min, img.max);
-							} else {
-								obj = new SkinSlider(getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx, img.divy),
-										img.timer, img.cycle, img.angle, (int) ((img.angle == 1 || img.angle == 3
-												? ((float)dstr.width / sk.w) : ((float)dstr.height / sk.h)) * img.range),
-										img.type);
+							if(tex != null) {
+								if(img.value != null) {
+									obj = new SkinSlider(getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx, img.divy),
+											img.timer, img.cycle, img.angle, (int) ((img.angle == 1 || img.angle == 3
+													? ((float)dstr.width / sk.w) : ((float)dstr.height / sk.h)) * img.range),
+											img.value, img.event);
+								} else if(img.isRefNum) {
+									obj = new SkinSlider(getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx, img.divy),
+											img.timer, img.cycle, img.angle, (int) ((img.angle == 1 || img.angle == 3
+													? ((float)dstr.width / sk.w) : ((float)dstr.height / sk.h)) * img.range),
+											img.type, img.min, img.max);
+								} else {
+									obj = new SkinSlider(getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx, img.divy),
+											img.timer, img.cycle, img.angle, (int) ((img.angle == 1 || img.angle == 3
+													? ((float)dstr.width / sk.w) : ((float)dstr.height / sk.h)) * img.range),
+											img.type);
+								}								
+								((SkinSlider)obj).setChangeable(img.changeable);
 							}
 							break;
 						}
@@ -510,40 +559,45 @@ public class JSONSkinLoader extends SkinLoader {
 						if (dst.id.equals(img.id)) {
 							if (img.type < 0) {
 								Texture tex = getTexture(img.src, p);
-								TextureRegion[][] imgs = null;
 								if(tex != null) {
-									TextureRegion[] images = getSourceImage(tex, img.x, img.y, img.w, img.h,
-											img.divx, img.divy);
-									final int len = img.type == -1 ? 11 : 28;
-									imgs = new TextureRegion[len][images.length / len];
-									for(int j = 0 ;j < len;j++) {
-										for(int i = 0 ;i < imgs[j].length;i++) {
-											imgs[j][i] = images[i * len + j];
+									TextureRegion[][] imgs = null;
+									if(tex != null) {
+										TextureRegion[] images = getSourceImage(tex, img.x, img.y, img.w, img.h,
+												img.divx, img.divy);
+										final int len = img.type == -1 ? 11 : 28;
+										imgs = new TextureRegion[len][images.length / len];
+										for(int j = 0 ;j < len;j++) {
+											for(int i = 0 ;i < imgs[j].length;i++) {
+												imgs[j][i] = images[i * len + j];
+											}
 										}
 									}
-								}
 
-								final int graphtype = img.type == -1 ? 0 : 1;
+									final int graphtype = img.type == -1 ? 0 : 1;
 
-								if(imgs != null) {
-									obj = new SkinDistributionGraph(graphtype,  imgs, img.timer, img.cycle);
-								} else {
-									obj = new SkinDistributionGraph(graphtype);
+									if(imgs != null) {
+										obj = new SkinDistributionGraph(graphtype,  imgs, img.timer, img.cycle);
+									} else {
+										obj = new SkinDistributionGraph(graphtype);
+									}									
 								}
+								
 							} else {
 								Texture tex = getTexture(img.src, p);
-
-								if(img.value != null) {
-									obj = new SkinGraph(getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx, img.divy),
-											img.timer, img.cycle, img.value);
-								} else if(img.isRefNum) {
-									obj = new SkinGraph(getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx, img.divy),
-											img.timer, img.cycle, img.type, img.min, img.max);
-								} else {
-									obj = new SkinGraph(getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx, img.divy),
-											img.timer, img.cycle, img.type);
+								if(tex != null) {
+									if(img.value != null) {
+										obj = new SkinGraph(getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx, img.divy),
+												img.timer, img.cycle, img.value);
+									} else if(img.isRefNum) {
+										obj = new SkinGraph(getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx, img.divy),
+												img.timer, img.cycle, img.type, img.min, img.max);
+									} else {
+										obj = new SkinGraph(getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx, img.divy),
+												img.timer, img.cycle, img.type);
+									}
+									((SkinGraph) obj).setDirection(img.angle);									
 								}
-								((SkinGraph) obj).setDirection(img.angle);
+
 								break;
 							}
 						}
@@ -551,7 +605,18 @@ public class JSONSkinLoader extends SkinLoader {
 
 					for (JsonSkin.GaugeGraph ggraph : sk.gaugegraph) {
 						if (dst.id.equals(ggraph.id)) {
-							SkinGaugeGraphObject st = new SkinGaugeGraphObject();
+							SkinGaugeGraphObject st = null;
+							if(ggraph.color != null) {
+								Color[][] colors = new Color[6][4];
+								for(int i = 0;i < 24 && i < ggraph.color.length;i++) {
+									colors[i / 4][i % 4] = Color.valueOf(ggraph.color[i]);
+								}
+								st = new SkinGaugeGraphObject(colors);
+							} else {
+								st = new SkinGaugeGraphObject(ggraph.assistClearBGColor, ggraph.assistAndEasyFailBGColor, ggraph.grooveFailBGColor, ggraph.grooveClearAndHardBGColor, ggraph.exHardBGColor, ggraph.hazardBGColor,
+										ggraph.assistClearLineColor, ggraph.assistAndEasyFailLineColor, ggraph.grooveFailLineColor, ggraph.grooveClearAndHardLineColor, ggraph.exHardLineColor, ggraph.hazardLineColor,
+										ggraph.borderlineColor, ggraph.borderColor);								
+							}
 							obj = st;
 							break;
 						}
@@ -711,20 +776,49 @@ public class JSONSkinLoader extends SkinLoader {
 					}
 					// gauge (playskin or resultskin only)
 					if (sk.gauge != null && dst.id.equals(sk.gauge.id)) {
-						TextureRegion[][] pgaugetex = new TextureRegion[sk.gauge.nodes.length][];
+						int[][] indexmap = null;
+						switch(sk.gauge.nodes.length) {
+							case 4:
+								indexmap = new int[][]{{0,4,6,10,12,16,18,22,24,28,30,34},{1,5,7,11,13,17,19,23,25,29,31,35},{2,8,14,20,26,32},{3,9,15,21,27,33}};
+								break;
+							case 8:
+								indexmap = new int[][]{{12,16,18,22},{13,17,19,23},{14,20},{15,21},
+										{0,4,6,10,24,28,30,34},{1,5,7,11,25,29,31,35},{2,8,26,32},{3,9,27,33}};
+								break;
+							case 12:
+								indexmap = new int[][]{{12,18},{13,19},{14,20},{15,21},
+										{0,6,24,30},{1,7,25,31},{2,8,26,32},{3,9,27,33},
+										{16,22}, {17,23}, {4, 10, 28, 34}, {5,11,29,35}};
+								break;
+							case 36:
+								break;
+						}
+						TextureRegion[][] pgaugetex = new TextureRegion[36][];
+
+						int gaugelength = 0;
 						for (int i = 0; i < sk.gauge.nodes.length; i++) {
 							for (JsonSkin.Image img : sk.image) {
 								if (sk.gauge.nodes[i].equals(img.id)) {
 									Texture tex = getTexture(img.src, p);
-									pgaugetex[i] = getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx, img.divy);
+									if(tex != null) {
+										if(indexmap != null) {
+											for(int index : indexmap[i]) {
+												pgaugetex[index] = getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx, img.divy);
+												gaugelength = pgaugetex[index].length;
+											}
+										} else {
+											pgaugetex[i] = getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx, img.divy);
+											gaugelength = pgaugetex[i].length;
+										}
+									}
 									break;
 								}
 							}
 
 						}
 
-						TextureRegion[][] gaugetex = new TextureRegion[pgaugetex[0].length][sk.gauge.nodes.length];
-						for (int i = 0; i < sk.gauge.nodes.length; i++) {
+						TextureRegion[][] gaugetex = new TextureRegion[gaugelength][36];
+						for (int i = 0; i < 36; i++) {
 							for (int j = 0; j < gaugetex.length; j++) {
 								gaugetex[j][i] = pgaugetex[i][j];
 							}
@@ -739,16 +833,18 @@ public class JSONSkinLoader extends SkinLoader {
 					for (JsonSkin.HiddenCover img : sk.hiddenCover) {
 						if (dst.id.equals(img.id)) {
 							Texture tex = getTexture(img.src, p);
-							obj = new SkinHidden(getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx, img.divy), img.timer, img.cycle);
-							((SkinHidden) obj).setDisapearLine((float) (img.disapearLine * skin.getScaleY()));
-							((SkinHidden) obj).setDisapearLineLinkLift(img.isDisapearLineLinkLift);
-							int[] offsets = new int[dst.offsets.length + 2];
-							for(int i = 0; i < dst.offsets.length; i++) {
-								offsets[i] = dst.offsets[i];
+							if(tex != null) {
+								obj = new SkinHidden(getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx, img.divy), img.timer, img.cycle);
+								((SkinHidden) obj).setDisapearLine((float) (img.disapearLine * skin.getScaleY()));
+								((SkinHidden) obj).setDisapearLineLinkLift(img.isDisapearLineLinkLift);
+								int[] offsets = new int[dst.offsets.length + 2];
+								for(int i = 0; i < dst.offsets.length; i++) {
+									offsets[i] = dst.offsets[i];
+								}
+								offsets[dst.offsets.length] = OFFSET_LIFT;
+								offsets[dst.offsets.length + 1] = OFFSET_HIDDEN_COVER;
+								dst.offsets = offsets;								
 							}
-							offsets[dst.offsets.length] = OFFSET_LIFT;
-							offsets[dst.offsets.length + 1] = OFFSET_HIDDEN_COVER;
-							dst.offsets = offsets;
 							break;
 						}
 					}
@@ -756,15 +852,18 @@ public class JSONSkinLoader extends SkinLoader {
 					for (JsonSkin.LiftCover img : sk.liftCover) {
 						if (dst.id.equals(img.id)) {
 							Texture tex = getTexture(img.src, p);
-							obj = new SkinHidden(getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx, img.divy), img.timer, img.cycle);
-							((SkinHidden) obj).setDisapearLine((float) (img.disapearLine * skin.getScaleY()));
-							((SkinHidden) obj).setDisapearLineLinkLift(img.isDisapearLineLinkLift);
-							int[] offsets = new int[dst.offsets.length + 2];
-							for(int i = 0; i < dst.offsets.length; i++) {
-								offsets[i] = dst.offsets[i];
+							if(tex != null) {
+								obj = new SkinHidden(getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx, img.divy), img.timer, img.cycle);
+								((SkinHidden) obj).setDisapearLine((float) (img.disapearLine * skin.getScaleY()));
+								((SkinHidden) obj).setDisapearLineLinkLift(img.isDisapearLineLinkLift);
+								int[] offsets = new int[dst.offsets.length + 2];
+								for(int i = 0; i < dst.offsets.length; i++) {
+									offsets[i] = dst.offsets[i];
+								}
+								offsets[dst.offsets.length] = OFFSET_LIFT;
+								dst.offsets = offsets;								
 							}
-							offsets[dst.offsets.length] = OFFSET_LIFT;
-							dst.offsets = offsets;
+
 							break;
 						}
 					}
@@ -781,10 +880,12 @@ public class JSONSkinLoader extends SkinLoader {
 								for (JsonSkin.Image img : sk.image) {
 									if (judge.images[i].id.equals(img.id)) {
 										Texture tex = getTexture(img.src, p);
-										images[i] = new SkinImage(
-												getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx, img.divy),
-												img.timer, img.cycle);
-										setDestination(skin, images[i], judge.images[i]);
+										if(tex != null) {
+											images[i] = new SkinImage(
+													getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx, img.divy),
+													img.timer, img.cycle);
+											setDestination(skin, images[i], judge.images[i]);											
+										}
 										break;
 									}
 								}
@@ -792,35 +893,38 @@ public class JSONSkinLoader extends SkinLoader {
 								for (JsonSkin.Value value : sk.value) {
 									if (judge.numbers[i].id.equals(value.id)) {
 										Texture tex = getTexture(value.src, p);
-										TextureRegion[] numimages = getSourceImage(tex, value.x, value.y, value.w,
-												value.h, value.divx, value.divy);
-										int d = numimages.length % 10 == 0 ? 10 : 11;
+										if(tex != null) {
+											TextureRegion[] numimages = getSourceImage(tex, value.x, value.y, value.w,
+													value.h, value.divx, value.divy);
+											int d = numimages.length % 10 == 0 ? 10 : 11;
 
-										TextureRegion[][] nimages = new TextureRegion[value.divx * value.divy / d][d];
-										for (int j = 0; j < d; j++) {
-											for (int k = 0; k < value.divx * value.divy / d; k++) {
-												nimages[k][j] = numimages[k * d + j];
+											TextureRegion[][] nimages = new TextureRegion[value.divx * value.divy / d][d];
+											for (int j = 0; j < d; j++) {
+												for (int k = 0; k < value.divx * value.divy / d; k++) {
+													nimages[k][j] = numimages[k * d + j];
+												}
 											}
-										}
-										numbers[i] = new SkinNumber(nimages, value.timer, value.cycle, value.digit,
-												d > 10 ? 2 : 0, value.ref);
-										numbers[i].setAlign(2);
-										if(value.offset != null) {
-											SkinOffset[] offsets = new SkinOffset[value.offset.length];
-											for(int j = 0;j < offsets.length;j++) {
-												offsets[j] = new SkinOffset();
-												offsets[j].x = value.offset[j].x;
-												offsets[j].y = value.offset[j].y;
-												offsets[j].w = value.offset[j].w;
-												offsets[j].h = value.offset[j].h;
+											numbers[i] = new SkinNumber(nimages, value.timer, value.cycle, value.digit,
+													d > 10 ? 2 : 0, value.space, value.ref);
+											numbers[i].setAlign(2);
+											numbers[i].setRelative(true);
+											if(value.offset != null) {
+												SkinOffset[] offsets = new SkinOffset[value.offset.length];
+												for(int j = 0;j < offsets.length;j++) {
+													offsets[j] = new SkinOffset();
+													offsets[j].x = value.offset[j].x;
+													offsets[j].y = value.offset[j].y;
+													offsets[j].w = value.offset[j].w;
+													offsets[j].h = value.offset[j].h;
+												}
+												numbers[i].setOffsets(offsets);
 											}
-											numbers[i].setOffsets(offsets);
-										}
 
-										for(JsonSkin.Animation ani : judge.numbers[i].dst) {
-											ani.x -= ani.w * value.digit / 2;
+											for(JsonSkin.Animation ani : judge.numbers[i].dst) {
+												ani.x -= ani.w * value.digit / 2;
+											}
+											setDestination(skin, numbers[i], judge.numbers[i]);											
 										}
-										setDestination(skin, numbers[i], judge.numbers[i]);
 										break;
 									}
 								}
@@ -852,13 +956,15 @@ public class JSONSkinLoader extends SkinLoader {
 										for (JsonSkin.Image img : sk.image) {
 											if (img.id.equals(imgs.images[j])) {
 												Texture tex = getTexture(img.src, p);
-												tr[j] = getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx,
-														img.divy);
-												if (timer == null) {
-													timer = img.timer;
-												}
-												if (cycle == -1) {
-													cycle = img.cycle;
+												if(tex != null) {
+													tr[j] = getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx,
+															img.divy);
+													if (timer == null) {
+														timer = img.timer;
+													}
+													if (cycle == -1) {
+														cycle = img.cycle;
+													}													
 												}
 												break;
 											}
@@ -882,11 +988,13 @@ public class JSONSkinLoader extends SkinLoader {
 							for (JsonSkin.Image img : sk.image) {
 								if (sk.songlist.lamp[i].id.equals(img.id)) {
 									Texture tex = getTexture(img.src, p);
-									SkinImage lamp = new SkinImage(
-											getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx, img.divy),
-											img.timer, img.cycle);
-									setDestination(skin, lamp, sk.songlist.lamp[i]);
-									barobj.setLamp(i, lamp);
+									if(tex != null) {
+										SkinImage lamp = new SkinImage(
+												getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx, img.divy),
+												img.timer, img.cycle);
+										setDestination(skin, lamp, sk.songlist.lamp[i]);
+										barobj.setLamp(i, lamp);										
+									}
 									break;
 								}
 							}
@@ -895,11 +1003,13 @@ public class JSONSkinLoader extends SkinLoader {
 							for (JsonSkin.Image img : sk.image) {
 								if (sk.songlist.playerlamp[i].id.equals(img.id)) {
 									Texture tex = getTexture(img.src, p);
-									SkinImage playerlamp = new SkinImage(
-											getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx, img.divy),
-											img.timer, img.cycle);
-									setDestination(skin, playerlamp, sk.songlist.playerlamp[i]);
-									barobj.setPlayerLamp(i, playerlamp);
+									if(tex != null) {
+										SkinImage playerlamp = new SkinImage(
+												getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx, img.divy),
+												img.timer, img.cycle);
+										setDestination(skin, playerlamp, sk.songlist.playerlamp[i]);
+										barobj.setPlayerLamp(i, playerlamp);										
+									}
 									break;
 								}
 							}
@@ -922,11 +1032,14 @@ public class JSONSkinLoader extends SkinLoader {
 							for (JsonSkin.Image img : sk.image) {
 								if (sk.songlist.trophy[i].id.equals(img.id)) {
 									Texture tex = getTexture(img.src, p);
-									SkinImage trophy = new SkinImage(
-											getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx, img.divy),
-											img.timer, img.cycle);
-									setDestination(skin, trophy, sk.songlist.trophy[i]);
-									barobj.setTrophy(i, trophy);
+									if(tex != null) {
+										SkinImage trophy = new SkinImage(
+												getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx, img.divy),
+												img.timer, img.cycle);
+										setDestination(skin, trophy, sk.songlist.trophy[i]);
+										barobj.setTrophy(i, trophy);										
+									}
+
 									break;
 								}
 							}
@@ -936,11 +1049,13 @@ public class JSONSkinLoader extends SkinLoader {
 							for (JsonSkin.Image img : sk.image) {
 								if (sk.songlist.label[i].id.equals(img.id)) {
 									Texture tex = getTexture(img.src, p);
-									SkinImage label = new SkinImage(
-											getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx, img.divy),
-											img.timer, img.cycle);
-									setDestination(skin, label, sk.songlist.label[i]);
-									barobj.setLabel(i, label);
+									if(tex != null) {
+										SkinImage label = new SkinImage(
+												getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx, img.divy),
+												img.timer, img.cycle);
+										setDestination(skin, label, sk.songlist.label[i]);
+										barobj.setLabel(i, label);										
+									}
 									break;
 								}
 							}
@@ -963,21 +1078,23 @@ public class JSONSkinLoader extends SkinLoader {
 							for (JsonSkin.Value value : sk.value) {
 								if (sk.songlist.level[i].id.equals(value.id)) {
 									Texture tex = getTexture(value.src, p);
-									TextureRegion[] numimages = getSourceImage(tex, value.x, value.y, value.w, value.h,
-											value.divx, value.divy);
-									int d = numimages.length % 10 == 0 ? 10 : 11;
+									if(tex != null) {
+										TextureRegion[] numimages = getSourceImage(tex, value.x, value.y, value.w, value.h,
+												value.divx, value.divy);
+										int d = numimages.length % 10 == 0 ? 10 : 11;
 
-									TextureRegion[][] nimages = new TextureRegion[value.divx * value.divy / d][d];
-									for (int j = 0; j < d; j++) {
-										for (int k = 0; k < value.divx * value.divy / d; k++) {
-											nimages[k][j] = numimages[k * d + j];
+										TextureRegion[][] nimages = new TextureRegion[value.divx * value.divy / d][d];
+										for (int j = 0; j < d; j++) {
+											for (int k = 0; k < value.divx * value.divy / d; k++) {
+												nimages[k][j] = numimages[k * d + j];
+											}
 										}
+										SkinNumber numbers = new SkinNumber(nimages, value.timer, value.cycle, value.digit,
+												d > 10 ? 2 : 0, value.space, value.ref);
+										numbers.setAlign(value.align);
+										setDestination(skin, numbers, sk.songlist.level[i]);
+										barobj.setBarlevel(i, numbers);										
 									}
-									SkinNumber numbers = new SkinNumber(nimages, value.timer, value.cycle, value.digit,
-											d > 10 ? 2 : 0, value.ref);
-									numbers.setAlign(value.align);
-									setDestination(skin, numbers, sk.songlist.level[i]);
-									barobj.setBarlevel(i, numbers);
 									break;
 								}
 							}
@@ -988,30 +1105,32 @@ public class JSONSkinLoader extends SkinLoader {
 							if (sk.songlist.graph != null && sk.songlist.graph.id.equals(img.id)) {
 								if (img.type < 0) {
 									Texture tex = getTexture(img.src, p);
-									TextureRegion[][] imgs = null;
 									if(tex != null) {
-										TextureRegion[] images = getSourceImage(tex, img.x, img.y, img.w, img.h,
-												img.divx, img.divy);
-										final int len = img.type == -1 ? 11 : 28;
-										imgs = new TextureRegion[len][images.length / len];
-										for(int j = 0 ;j < len;j++) {
-											for(int i = 0 ;i < imgs[j].length;i++) {
-												imgs[j][i] = images[i * len + j];
+										TextureRegion[][] imgs = null;
+										if(tex != null) {
+											TextureRegion[] images = getSourceImage(tex, img.x, img.y, img.w, img.h,
+													img.divx, img.divy);
+											final int len = img.type == -1 ? 11 : 28;
+											imgs = new TextureRegion[len][images.length / len];
+											for(int j = 0 ;j < len;j++) {
+												for(int i = 0 ;i < imgs[j].length;i++) {
+													imgs[j][i] = images[i * len + j];
+												}
 											}
 										}
+
+										final int graphtype = img.type == -1 ? 0 : 1;
+
+										SkinDistributionGraph bargraph = null;
+										if(imgs != null) {
+											bargraph = new SkinDistributionGraph(graphtype,  imgs, img.timer, img.cycle);
+										} else {
+											bargraph = new SkinDistributionGraph(graphtype);
+										}
+
+										setDestination(skin, bargraph, sk.songlist.graph);
+										barobj.setGraph(bargraph);										
 									}
-
-									final int graphtype = img.type == -1 ? 0 : 1;
-
-									SkinDistributionGraph bargraph = null;
-									if(imgs != null) {
-										bargraph = new SkinDistributionGraph(graphtype,  imgs, img.timer, img.cycle);
-									} else {
-										bargraph = new SkinDistributionGraph(graphtype);
-									}
-
-									setDestination(skin, bargraph, sk.songlist.graph);
-									barobj.setGraph(bargraph);
 								}
 							}
 						}
@@ -1157,45 +1276,66 @@ public class JSONSkinLoader extends SkinLoader {
 			obj.setStretch(dst.stretch);
 		}
 	}
+	
+	private Object getSource(String srcid, Path p) {
+		if(srcid == null) {
+			return null;
+		}
+		
+		final SourceData data = sourceMap.get(srcid);
+		if(data == null) {
+			return null;
+		}
+		
+		if(data.loaded) {
+			return data.data;
+		}
+		final File imagefile = getPath(p.getParent().toString() + "/" + data.path, filemap);
+		if (imagefile.exists()) {
+			boolean isMovie = false;
+			 for (String mov : BGAProcessor.mov_extension) {
+				 if (imagefile.getName().toLowerCase().endsWith(mov)) {
+					 try {
+					 	SkinSourceMovie mm = new SkinSourceMovie(imagefile.getAbsolutePath());
+					 	data.data = mm;
+					 	isMovie = true;
+					 	break;
+					 } catch (Throwable e) {
+						Logger.getGlobal().warning("BGAファイル読み込み失敗。" + e.getMessage());
+					 	e.printStackTrace();
+					 }
+				 }
+			 }
+
+			if (!isMovie) {
+				data.data = getTexture(imagefile.getPath());
+			}
+		}
+		data.loaded = true;
+		
+		return data.data;
+	}
 
 	private Texture getTexture(String srcid, Path p) {
 		if(srcid == null) {
 			return null;
 		}
-		for (JsonSkin.Source src : sk.source) {
-			if (srcid.equals(src.id)) {
-				if (!texmap.containsKey(src.id)) {
-					final File imagefile = getPath(p.getParent().toString() + "/" + src.path, filemap);
-					if (imagefile.exists()) {
-						boolean isMovie = false;
-						// for (String mov : BGAProcessor.mov_extension) {
-						// if (imagefile.getName().toLowerCase().endsWith(mov))
-						// {
-						// try {
-						// SkinSourceMovie mm = new
-						// SkinSourceMovie(imagefile.getPath());
-						// imagelist.add(mm);
-						// isMovie = true;
-						// break;
-						// } catch (Throwable e) {
-						// Logger.getGlobal().warning("BGAファイル読み込み失敗。" +
-						// e.getMessage());
-						// e.printStackTrace();
-						// }
-						// }
-						// }
-
-						if (!isMovie) {
-							texmap.put(src.id, getTexture(imagefile.getPath()));
-						}
-					} else {
-						texmap.put(src.id, null);
-					}
-				}
-				return texmap.get(src.id);
-			}
+		
+		final SourceData data = sourceMap.get(srcid);
+		if(data == null) {
+			return null;
 		}
-		return null;
+
+		if(data.loaded) {
+			return (data.data instanceof Texture) ? (Texture)data.data : null;
+		}
+		final File imagefile = getPath(p.getParent().toString() + "/" + data.path, filemap);
+		if (imagefile.exists()) {
+			data.data = getTexture(imagefile.getPath());
+		}
+		data.loaded = true;
+		
+		return (Texture) data.data;
 	}
 
 	private SkinSource[] getNoteTexture(String[] images, Path p) {
@@ -1286,13 +1426,12 @@ public class JSONSkinLoader extends SkinLoader {
 		if(srcid == null) {
 			return null;
 		}
-		for (JsonSkin.Source src : sk.source) {
-			if (srcid.equals(src.id)) {
-				if (!texmap.containsKey(src.id)) {
-					return getPath(p.getParent().toString() + "/" + src.path, filemap);
-				}
-			}
+		
+		final SourceData data = sourceMap.get(srcid);
+		if(data == null) {
+			return null;
 		}
-		return null;
+		
+		return getPath(p.getParent().toString() + "/" + data.path, filemap);
 	}
 }

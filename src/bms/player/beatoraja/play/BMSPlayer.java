@@ -3,6 +3,7 @@ package bms.player.beatoraja.play;
 import static bms.player.beatoraja.CourseData.CourseDataConstraint.*;
 import static bms.player.beatoraja.skin.SkinProperty.*;
 
+import java.nio.file.Path;
 import java.util.*;
 import java.util.logging.Logger;
 
@@ -39,7 +40,6 @@ public class BMSPlayer extends MainState {
 
 	private int playtime;
 
-	private PlayMode autoplay = PlayMode.PLAY;
 	/**
 	 * キー入力用スレッド
 	 */
@@ -75,14 +75,11 @@ public class BMSPlayer extends MainState {
 
 	public static final int SOUND_READY = 0;
 	public static final int SOUND_PLAYSTOP = 1;
-	public static final int SOUND_GUIDE_SE_PG = 10;
-	public static final int SOUND_GUIDE_SE_GR = 11;
-	public static final int SOUND_GUIDE_SE_GD = 12;
 
 	public BMSPlayer(MainController main, PlayerResource resource) {
 		super(main);
 		this.model = resource.getBMSModel();
-		this.autoplay = resource.getPlayMode();
+		PlayMode autoplay = resource.getPlayMode();
 		PlayerConfig config = resource.getPlayerConfig();
 
 		if (autoplay.isReplayMode()) {
@@ -97,6 +94,7 @@ public class BMSPlayer extends MainState {
 						replay = replays[0];
 					} else {
 						autoplay = PlayMode.PLAY;
+						resource.setPlayMode(autoplay);
 					}
 				} else {
 					for (int i = 0; i < resource.getCourseBMSModels().length; i++) {
@@ -109,6 +107,7 @@ public class BMSPlayer extends MainState {
 				replay = main.getPlayDataAccessor().readReplayData(model, config.getLnmode(), autoplay.getReplayIndex());
 				if (replay == null) {
 					autoplay = PlayMode.PLAY;
+					resource.setPlayMode(autoplay);
 				}
 			}
 		}
@@ -134,19 +133,20 @@ public class BMSPlayer extends MainState {
 		if(isReplayPatternPlay) {
 			replay = null;
 			autoplay = PlayMode.PLAY;
+			resource.setPlayMode(autoplay);
 		}
 
 		if (model.getRandom() != null && model.getRandom().length > 0) {
 			if (autoplay.isReplayMode()) {
-				model = resource.getGenerator().generate(replay.rand);
+				model = resource.loadBMSModel(replay.rand);
 				// 暫定処置
 				BMSModelUtils.setStartNoteTime(model, 1000);
-				BMSPlayerRule.validate(model, false);
+				BMSPlayerRule.validate(model);
 			} else if (resource.getReplayData().pattern != null) {
-				model = resource.getGenerator().generate(resource.getReplayData().rand);
+				model = resource.loadBMSModel(resource.getReplayData().rand);
 				// 暫定処置
 				BMSModelUtils.setStartNoteTime(model, 1000);
-				BMSPlayerRule.validate(model, false);
+				BMSPlayerRule.validate(model);
 			}
 			Logger.getGlobal().info("譜面分岐 : " + Arrays.toString(model.getRandom()));
 		}
@@ -156,7 +156,7 @@ public class BMSPlayer extends MainState {
 		boolean score = true;
 
 		Logger.getGlobal().info("アシストオプション設定");
-		if (resource.getCourseBMSModels() == null && autoplay == PlayMode.PLAY || autoplay.isAutoPlayMode()) {
+		if (autoplay == PlayMode.PLAY || autoplay.isAutoPlayMode()) {
 			if (config.isBpmguide() && (model.getMinBPM() < model.getMaxBPM())) {
 				// BPM変化がなければBPMガイドなし
 				assist = 1;
@@ -192,6 +192,25 @@ public class BMSPlayer extends MainState {
 					score = false;
 				}
 			}
+
+			if(config.getMineMode() > 0) {
+				MineNoteModifier mod = new MineNoteModifier(config.getMineMode() - 1);
+				mod.modify(model);
+				if(mod.getAssistLevel() != PatternModifier.AssistLevel.NONE) {
+					assist = Math.max(assist, mod.getAssistLevel() == PatternModifier.AssistLevel.ASSIST ? 2 : 1);
+					score = false;
+				}
+			}
+
+			if(config.getExtranoteDepth() > 0) {
+				ExtraNoteModifier mod = new ExtraNoteModifier(config.getExtranoteType(), config.getExtranoteDepth(), config.isExtranoteScratch());
+				mod.modify(model);
+				if(mod.getAssistLevel() != PatternModifier.AssistLevel.NONE) {
+					assist = Math.max(assist, mod.getAssistLevel() == PatternModifier.AssistLevel.ASSIST ? 2 : 1);
+					score = false;
+				}
+			}
+
 			if (config.getDoubleoption() >= 2 && (model.getMode() == Mode.BEAT_5K || model.getMode() == Mode.BEAT_7K || model.getMode() == Mode.KEYBOARD_24K)) {
 				// SPでなければBATTLEは未適用
 				switch (model.getMode()) {
@@ -309,6 +328,7 @@ public class BMSPlayer extends MainState {
 		}
 
 		resource.setUpdateScore(score);
+		resource.setUpdateCourseScore(resource.isUpdateCourseScore() && score);
 		final int difficulty = resource.getSongdata() != null ? resource.getSongdata().getDifficulty() : 0;
 		resource.getSongdata().setBMSModel(model);
 		resource.getSongdata().setDifficulty(difficulty);
@@ -325,6 +345,7 @@ public class BMSPlayer extends MainState {
 
 	public void create() {
 		final PlayerResource resource = main.getPlayerResource();
+		final PlayMode autoplay = resource.getPlayMode();
 		laneProperty = new LaneProperty(model.getMode());
 		keysound = new KeySoundProcessor(this);
 		judge = new JudgeManager(this);
@@ -337,9 +358,20 @@ public class BMSPlayer extends MainState {
 
 		setSound(SOUND_READY, "playready.wav", SoundType.SOUND, false);
 		setSound(SOUND_PLAYSTOP, "playstop.wav", SoundType.SOUND, false);
-		setSound(SOUND_GUIDE_SE_PG, "guide-pg.wav", SoundType.SOUND, false);
-		setSound(SOUND_GUIDE_SE_GR, "guide-gr.wav", SoundType.SOUND, false);
-		setSound(SOUND_GUIDE_SE_GD, "guide-gd.wav", SoundType.SOUND, false);
+
+		final String[] guideses = {"guide-pg.wav","guide-gr.wav","guide-gd.wav","guide-bd.wav","guide-pr.wav","guide-ms.wav"};
+		for(int i = 0;i < 6;i++) {
+			if(config.isGuideSE()) {
+				Path[] paths = getSoundPaths(guideses[i], SoundType.SOUND);
+				if(paths.length > 0) {
+					main.getAudioProcessor().setAdditionalKeySound(i, true, paths[0].toString());
+					main.getAudioProcessor().setAdditionalKeySound(i, false, paths[0].toString());
+				}				
+			} else {
+				main.getAudioProcessor().setAdditionalKeySound(i, true, null);
+				main.getAudioProcessor().setAdditionalKeySound(i, false, null);								
+			}
+		}
 
 		final BMSPlayerInputProcessor input = main.getInputProcessor();
 		if(autoplay == PlayMode.PLAY || autoplay == PlayMode.PRACTICE) {
@@ -357,9 +389,8 @@ public class BMSPlayer extends MainState {
 
 		judge.init(model, resource);
 
-		final PlaySkin skin = (PlaySkin) getSkin();
-
-		rhythm = new RhythmTimerProcessor(model, skin.getNoteExpansionRate()[0] != 100 || skin.getNoteExpansionRate()[1] != 100);
+		rhythm = new RhythmTimerProcessor(model, 
+				(getSkin() instanceof PlaySkin) ? ((PlaySkin) getSkin()).getNoteExpansionRate()[0] != 100 || ((PlaySkin) getSkin()).getNoteExpansionRate()[1] != 100 : false);
 
 		bga = resource.getBGAManager();
 
@@ -403,7 +434,12 @@ public class BMSPlayer extends MainState {
 	@Override
 	public void render() {
 		final PlaySkin skin = (PlaySkin) getSkin();
+		if(skin == null) {
+			main.changeState(MainStateType.MUSICSELECT);
+			return;
+		}
 		final PlayerResource resource = main.getPlayerResource();
+		final PlayMode autoplay = resource.getPlayMode();
 		final BMSPlayerInputProcessor input = main.getInputProcessor();
 		final PlayerConfig config = resource.getPlayerConfig();
 
@@ -747,7 +783,7 @@ public class BMSPlayer extends MainState {
 			}
 		}
 		PlayConfig pc = resource.getPlayerConfig().getPlayConfig(model.getMode()).getPlayconfig();
-		if (lanerender.getFixHispeed() != PlayConfig.FIX_HISPEED_OFF) {
+		if (pc.getFixhispeed() != PlayConfig.FIX_HISPEED_OFF) {
 			pc.setDuration(lanerender.getGreenValue());
 		} else {
 			pc.setHispeed(lanerender.getHispeed());
@@ -809,6 +845,7 @@ public class BMSPlayer extends MainState {
 		replay.doubleoption = config.getDoubleoption();
 		replay.config = replayConfig;
 
+		score.setPassnotes(notes);
 		score.setMinbp(score.getEbd() + score.getLbd() + score.getEpr() + score.getLpr() + score.getEms() + score.getLms() + resource.getSongdata().getNotes() - notes);
 		score.setDeviceType(main.getInputProcessor().getDeviceType());
 		return score;
@@ -889,10 +926,6 @@ public class BMSPlayer extends MainState {
 
 	public GrooveGauge getGauge() {
 		return gauge;
-	}
-
-	public PlayMode getPlayMode() {
-		return autoplay;
 	}
 
 	public boolean isNoteEnd() {

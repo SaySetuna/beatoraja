@@ -27,11 +27,7 @@ import bms.player.beatoraja.result.AbstractResult;
 import bms.player.beatoraja.result.CourseResult;
 import bms.player.beatoraja.result.MusicResult;
 import bms.player.beatoraja.select.MusicSelector;
-import bms.player.beatoraja.select.bar.Bar;
-import bms.player.beatoraja.select.bar.DirectoryBar;
-import bms.player.beatoraja.select.bar.GradeBar;
-import bms.player.beatoraja.select.bar.SelectableBar;
-import bms.player.beatoraja.select.bar.SongBar;
+import bms.player.beatoraja.select.bar.*;
 import bms.player.beatoraja.skin.SkinObject;
 import bms.player.beatoraja.song.SongData;
 
@@ -483,13 +479,17 @@ public class BooleanPropertyFactory {
 		case OPTION_GRADEBAR:
 			return new DrawProperty(DrawProperty.TYPE_NO_STATIC,
 					(state) -> ((state instanceof MusicSelector) ? ((MusicSelector) state).getSelectedBar() instanceof GradeBar : false));
+		case OPTION_RANDOMSELECTBAR:
+			return new DrawProperty(DrawProperty.TYPE_NO_STATIC,
+					(state) -> ((state instanceof MusicSelector) ? ((MusicSelector) state).getSelectedBar() instanceof ExecutableBar : false));
 		case OPTION_PLAYABLEBAR:
 			return new DrawProperty(DrawProperty.TYPE_NO_STATIC,
 					(state) -> {
 						if(state instanceof MusicSelector) {
 							Bar selected = ((MusicSelector) state).getSelectedBar();
 							return ((selected instanceof SongBar) && ((SongBar)selected).getSongData().getPath() != null) ||
-									((selected instanceof GradeBar) && ((GradeBar)selected).existsAllSongs()); 
+									((selected instanceof GradeBar) && ((GradeBar)selected).existsAllSongs()) ||
+									(selected instanceof ExecutableBar);
 						}
 						return false;
 					});
@@ -505,6 +505,9 @@ public class BooleanPropertyFactory {
 		case OPTION_SELECT_REPLAYDATA4:
 			return new DrawProperty(DrawProperty.TYPE_NO_STATIC,
 					(state) -> ((state instanceof MusicSelector) ? ((MusicSelector) state).getSelectedReplay() == 3 : false));
+		case OPTION_GRADEBAR_CLASS:
+			return new DrawProperty(DrawProperty.TYPE_NO_STATIC,
+					(state) -> ((state instanceof MusicSelector) ? ((MusicSelector) state).existsConstraint(CourseData.CourseDataConstraint.CLASS) : false));
 		case OPTION_GRADEBAR_MIRROR:
 			return new DrawProperty(DrawProperty.TYPE_NO_STATIC,
 					(state) -> ((state instanceof MusicSelector) ? ((MusicSelector) state).existsConstraint(CourseData.CourseDataConstraint.MIRROR) : false));
@@ -520,6 +523,30 @@ public class BooleanPropertyFactory {
 		case OPTION_GRADEBAR_NOGREAT:
 			return new DrawProperty(DrawProperty.TYPE_NO_STATIC,
 					(state) -> ((state instanceof MusicSelector) ? ((MusicSelector) state).existsConstraint(CourseData.CourseDataConstraint.NO_GREAT) : false));
+		case OPTION_GRADEBAR_GAUGE_LR2:
+			return new DrawProperty(DrawProperty.TYPE_NO_STATIC,
+					(state) -> ((state instanceof MusicSelector) ? ((MusicSelector) state).existsConstraint(CourseData.CourseDataConstraint.GAUGE_LR2) : false));
+		case OPTION_GRADEBAR_GAUGE_5KEYS:
+			return new DrawProperty(DrawProperty.TYPE_NO_STATIC,
+					(state) -> ((state instanceof MusicSelector) ? ((MusicSelector) state).existsConstraint(CourseData.CourseDataConstraint.GAUGE_5KEYS) : false));
+		case OPTION_GRADEBAR_GAUGE_7KEYS:
+			return new DrawProperty(DrawProperty.TYPE_NO_STATIC,
+					(state) -> ((state instanceof MusicSelector) ? ((MusicSelector) state).existsConstraint(CourseData.CourseDataConstraint.GAUGE_7KEYS) : false));
+		case OPTION_GRADEBAR_GAUGE_9KEYS:
+			return new DrawProperty(DrawProperty.TYPE_NO_STATIC,
+					(state) -> ((state instanceof MusicSelector) ? ((MusicSelector) state).existsConstraint(CourseData.CourseDataConstraint.GAUGE_9KEYS) : false));
+		case OPTION_GRADEBAR_GAUGE_24KEYS:
+			return new DrawProperty(DrawProperty.TYPE_NO_STATIC,
+					(state) -> ((state instanceof MusicSelector) ? ((MusicSelector) state).existsConstraint(CourseData.CourseDataConstraint.GAUGE_24KEYS) : false));
+		case OPTION_GRADEBAR_LN:
+			return new DrawProperty(DrawProperty.TYPE_NO_STATIC,
+					(state) -> ((state instanceof MusicSelector) ? ((MusicSelector) state).existsConstraint(CourseData.CourseDataConstraint.LN) : false));
+		case OPTION_GRADEBAR_CN:
+			return new DrawProperty(DrawProperty.TYPE_NO_STATIC,
+					(state) -> ((state instanceof MusicSelector) ? ((MusicSelector) state).existsConstraint(CourseData.CourseDataConstraint.CN) : false));
+		case OPTION_GRADEBAR_HCN:
+			return new DrawProperty(DrawProperty.TYPE_NO_STATIC,
+					(state) -> ((state instanceof MusicSelector) ? ((MusicSelector) state).existsConstraint(CourseData.CourseDataConstraint.HCN) : false));
 		case OPTION_NOT_COMPARE_RIVAL:
 			return new DrawProperty(DrawProperty.TYPE_NO_STATIC,
 					(state) -> ((state instanceof MusicSelector) ? ((MusicSelector) state).getRival() == null : false));
@@ -629,16 +656,16 @@ public class BooleanPropertyFactory {
 					});
 		case OPTION_AUTOPLAYON:
 			return new DrawProperty(DrawProperty.TYPE_NO_STATIC,
-					(state) -> ((state instanceof BMSPlayer) ? ((BMSPlayer) state).getPlayMode() == PlayMode.AUTOPLAY : false));
+					(state) -> ((state instanceof BMSPlayer) ? ((BMSPlayer) state).main.getPlayerResource().getPlayMode() == PlayMode.AUTOPLAY : false));
 		case OPTION_AUTOPLAYOFF:
 			return new DrawProperty(DrawProperty.TYPE_NO_STATIC,
-					(state) -> ((state instanceof BMSPlayer) ? ((BMSPlayer) state).getPlayMode() != PlayMode.AUTOPLAY : false));
+					(state) -> ((state instanceof BMSPlayer) ? ((BMSPlayer) state).main.getPlayerResource().getPlayMode() != PlayMode.AUTOPLAY : false));
 		case OPTION_REPLAY_OFF:
 			return new DrawProperty(DrawProperty.TYPE_NO_STATIC,
-					(state) -> ((state instanceof BMSPlayer) ? ((BMSPlayer) state).getPlayMode() == PlayMode.PLAY || ((BMSPlayer) state).getPlayMode() == PlayMode.PRACTICE : false));
+					(state) -> ((state instanceof BMSPlayer) ? ((BMSPlayer) state).main.getPlayerResource().getPlayMode() == PlayMode.PLAY || ((BMSPlayer) state).main.getPlayerResource().getPlayMode() == PlayMode.PRACTICE : false));
 		case OPTION_REPLAY_PLAYING:
 			return new DrawProperty(DrawProperty.TYPE_NO_STATIC,
-					(state) -> ((state instanceof BMSPlayer) ? ((BMSPlayer) state).getPlayMode().isReplayMode() : false));
+					(state) -> ((state instanceof BMSPlayer) ? ((BMSPlayer) state).main.getPlayerResource().getPlayMode().isReplayMode() : false));
 		case OPTION_STATE_PRACTICE:
 			return new DrawProperty(DrawProperty.TYPE_NO_STATIC,
 					(state) -> ((state instanceof BMSPlayer) ? ((BMSPlayer) state).getState() == BMSPlayer.STATE_PRACTICE : false));

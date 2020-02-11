@@ -16,14 +16,12 @@ public class SkinSourceReference implements SkinSource {
 	public void dispose() {
 	}
 
+	public boolean validate() {
+		return true;
+	}
+	
 	@Override
 	public TextureRegion getImage(long time, MainState state) {
 		return state.getImage(id);
 	}
-
-	@Override
-	public TextureRegion[] getImages(long time, MainState state) {
-		return null;
-	}
-
 }

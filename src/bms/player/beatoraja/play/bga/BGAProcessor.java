@@ -129,16 +129,27 @@ public class BGAProcessor {
 						if (index != -1) {
 							fex = name.substring(index + 1).toLowerCase();
 						}
-						if(fex != null && !(Arrays.asList(mov_extension).contains(fex))){
-							f = dpath.resolve(name);
-						}else if(fex != null){
-							name = name.substring(0, index);
-							for (String mov : mov_extension) {
-								final Path mpgfile = dpath.resolve(name + "." + mov);
-								if (Files.exists(mpgfile)) {
-									f = mpgfile;
-									break;
+						if (fex != null) {
+							if (Arrays.asList(mov_extension).contains(fex)){
+								name = name.substring(0, index);
+								for (String mov : mov_extension) {
+									final Path mpgfile = dpath.resolve(name + "." + mov);
+									if (Files.exists(mpgfile)) {
+										f = mpgfile;
+										break;
+									}
 								}
+							}else if (Arrays.asList(BGImageProcessor.pic_extension).contains(fex)){
+								name = name.substring(0, index);
+								for (String pic : BGImageProcessor.pic_extension) {
+									final Path picfile = dpath.resolve(name + "." + pic);
+									if (Files.exists(picfile)) {
+										f = picfile;
+										break;
+									}
+								}
+							}else{
+								f = dpath.resolve(name);
 							}
 						}
 					}
@@ -250,8 +261,6 @@ public class BGAProcessor {
 			this.time = -1;
 			return;
 		}
-		rbga = true;
-		rlayer = true;
 		for (int i = pos; i < timelines.length; i++) {
 			final TimeLine tl = timelines[i];
 			if (tl.getTime() > time) {
@@ -315,6 +324,7 @@ public class BGAProcessor {
 		} else {
 			// draw BGA
 			final Texture playingbgatex = getBGAData(time, playingbgaid, rbga);
+			rbga = true;
 			if (playingbgatex != null) {
 				if (movies[playingbgaid] != null) {
 					sprite.setType(SkinObjectRenderer.TYPE_FFMPEG);
@@ -328,6 +338,7 @@ public class BGAProcessor {
 			}
 			// draw layer
 			final Texture playinglayertex = getBGAData(time, playinglayerid, rlayer);
+			rlayer = true;
 			if (playinglayertex != null) {
 				if (movies[playinglayerid] != null) {
 					sprite.setType(SkinObjectRenderer.TYPE_FFMPEG);

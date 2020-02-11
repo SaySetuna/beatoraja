@@ -2,9 +2,7 @@ package bms.player.beatoraja;
 
 import static bms.player.beatoraja.Resolution.*;
 
-import java.io.FileReader;
-import java.io.FileWriter;
-import java.io.IOException;
+import java.io.*;
 import java.nio.file.Files;
 import java.util.Arrays;
 
@@ -37,6 +35,10 @@ public class Config implements Validatable {
 	 * 解像度
 	 */
 	private Resolution resolution = HD;
+
+	private boolean useResolution = true;
+	private int windowWidth = 1280;
+	private int windowHeight = 720;
 
 	/**
 	 * フォルダランプの有効/無効
@@ -107,7 +109,15 @@ public class Config implements Validatable {
 	 */
 	private int maxFramePerSecond = 240;
 	
-	private int prepareFramePerSecond = 120;
+	private int prepareFramePerSecond = 10000;
+	/**
+	 * 検索バー同時表示上限数
+	 */
+	private int maxSearchBarCount = 10;
+	/**
+	 * 所持していない楽曲バーを表示するかどうか
+	 */
+	private boolean showNoSongExistingBar = true;
 	/**
 	 * 選曲バー移動速度の最初
 	 */
@@ -129,10 +139,6 @@ public class Config implements Validatable {
      */
     private boolean useSongInfo = true;
 
-	/**
-	 * 判定アルゴリズム
-	 */
-	private String judgeType = JudgeAlgorithm.Combo.name();
 	/**
 	 * HIDDENノートを表示するかどうか
 	 */
@@ -198,7 +204,7 @@ public class Config implements Validatable {
 	private boolean enableIpfs = true;
 	private String ipfsurl = "https://gateway.ipfs.io/";
 
-
+	private int irSendCount = 5;
 
 	private static final String[] DEFAULT_TABLEURL = { "http://bmsnormal2.syuriken.jp/table.html",
 			"http://bmsnormal2.syuriken.jp/table_insane.html",
@@ -291,20 +297,6 @@ public class Config implements Validatable {
 		this.tableURL = tableURL;
 	}
 
-	public String getJudgeType() {
-		for(JudgeAlgorithm type : JudgeAlgorithm.values()) {
-			if(type.name().equals(judgeType)) {
-				return judgeType;
-			}
-		}
-		judgeType = JudgeAlgorithm.Combo.name();
-		return judgeType;
-	}
-
-	public void setJudgeType(String judgeType) {
-		this.judgeType = judgeType;
-	}
-
 	public boolean isFolderlamp() {
 		return folderlamp;
 	}
@@ -319,6 +311,22 @@ public class Config implements Validatable {
 
 	public void setResolution(Resolution resolution) {
 		this.resolution = resolution;
+	}
+
+	public int getWindowWidth() {
+		return windowWidth;
+	}
+
+	public void setWindowWidth(int width) {
+		this.windowWidth = width;
+	}
+
+	public int getWindowHeight() {
+		return windowHeight;
+	}
+
+	public void setWindowHeight(int height) {
+		this.windowHeight = height;
 	}
 
 	public boolean isShowhiddennote() {
@@ -351,6 +359,22 @@ public class Config implements Validatable {
 
 	public void setSoundpath(String soundpath) {
 		this.soundpath = soundpath;
+	}
+
+	public int getMaxSearchBarCount() {
+	    return maxSearchBarCount;
+    }
+
+    public void setMaxSearchBarCount(int maxSearchBarCount) {
+	    this.maxSearchBarCount = maxSearchBarCount;
+    }
+
+	public boolean isShowNoSongExistingBar() {
+		return showNoSongExistingBar;
+	}
+
+	public void setShowNoSongExistingBar(boolean showNoExistingSongBar) {
+		this.showNoSongExistingBar = showNoExistingSongBar;
 	}
 
 	public int getScrollDurationLow(){
@@ -593,6 +617,8 @@ public class Config implements Validatable {
 		if(resolution == null) {
 			resolution = Resolution.HD;
 		}
+		windowWidth = MathUtils.clamp(windowWidth, Resolution.SD.width, Resolution.ULTRAHD.width);
+		windowHeight = MathUtils.clamp(windowHeight, Resolution.SD.height, Resolution.ULTRAHD.height);
 		audioDriver = MathUtils.clamp(audioDriver, 0, 2);
 		audioDeviceBufferSize = MathUtils.clamp(audioDeviceBufferSize, 4, 4096);
 		audioDeviceSimultaneousSources = MathUtils.clamp(audioDeviceSimultaneousSources, 16, 1024);
@@ -603,12 +629,16 @@ public class Config implements Validatable {
 		bgvolume = MathUtils.clamp(bgvolume, 0f, 1f);
 		maxFramePerSecond = MathUtils.clamp(maxFramePerSecond, 0, 10000);
 		prepareFramePerSecond = MathUtils.clamp(prepareFramePerSecond, 1, 10000);
+        maxSearchBarCount = MathUtils.clamp(maxSearchBarCount, 1, 100);
 		scrolldurationlow = MathUtils.clamp(scrolldurationlow, 2, 1000);
 		scrolldurationhigh = MathUtils.clamp(scrolldurationhigh, 1, 1000);
+		irSendCount = MathUtils.clamp(irSendCount, 1, 100);
 
-		if(JudgeAlgorithm.getIndex(judgeType) == -1) {
-			judgeType = JudgeAlgorithm.Combo.name();
-		}
+		skinPixmapGen = MathUtils.clamp(skinPixmapGen, 0, 100);
+		stagefilePixmapGen = MathUtils.clamp(stagefilePixmapGen, 0, 100);
+		bannerPixmapGen = MathUtils.clamp(bannerPixmapGen, 0, 100);
+		songResourceGen = MathUtils.clamp(songResourceGen, 0, 100);
+
 		bmsroot = Validatable.removeInvalidElements(bmsroot);
 
 		if(tableURL == null) {
@@ -640,9 +670,9 @@ public class Config implements Validatable {
 		Config config = null;
 		if (Files.exists(MainController.configpath)) {
 			Json json = new Json();
-			try {
-				json.setIgnoreUnknownFields(true);
-				config = json.fromJson(Config.class, new FileReader(MainController.configpath.toFile()));
+			json.setIgnoreUnknownFields(true);
+			try (FileReader reader = new FileReader(MainController.configpath.toFile())) {
+				config = json.fromJson(Config.class, reader);
 			} catch (Exception e) {
 				e.printStackTrace();
 			}
@@ -659,13 +689,30 @@ public class Config implements Validatable {
 
 	public static void write(Config config) {
 		Json json = new Json();
+		json.setUsePrototypes(false);
 		json.setOutputType(OutputType.json);
-		try (FileWriter fw = new FileWriter(MainController.configpath.toFile())) {
-			fw.write(json.prettyPrint(config));
-			fw.flush();
+		try (FileWriter writer = new FileWriter(MainController.configpath.toFile())) {
+			writer.write(json.prettyPrint(config));
+			writer.flush();
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
+	}
+
+	public int getIrSendCount() {
+		return irSendCount;
+	}
+
+	public void setIrSendCount(int irSendCount) {
+		this.irSendCount = irSendCount;
+	}
+
+	public boolean isUseResolution() {
+		return useResolution;
+	}
+
+	public void setUseResolution(boolean useResolution) {
+		this.useResolution = useResolution;
 	}
 
 	public enum DisplayMode {

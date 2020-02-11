@@ -8,6 +8,7 @@ import java.util.logging.Logger;
 
 import javax.swing.JOptionPane;
 
+import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Graphics;
 import javafx.application.Application;
 import javafx.fxml.FXMLLoader;
@@ -18,7 +19,11 @@ import com.badlogic.gdx.backends.lwjgl.LwjglApplication;
 import com.badlogic.gdx.backends.lwjgl.LwjglApplicationConfiguration;
 
 import bms.player.beatoraja.PlayerResource.PlayMode;
+import bms.player.beatoraja.ir.IRConnectionManager;
 import bms.player.beatoraja.launcher.PlayConfigurationView;
+import bms.player.beatoraja.song.SQLiteSongDatabaseAccessor;
+import bms.player.beatoraja.song.SongDatabaseAccessor;
+import bms.player.beatoraja.song.SongInformationAccessor;
 
 /**
  * 起動用クラス
@@ -28,6 +33,12 @@ import bms.player.beatoraja.launcher.PlayConfigurationView;
 public class MainLoader extends Application {
 	
 	private static final boolean ALLOWS_32BIT_JAVA = false;
+	
+	private static SongDatabaseAccessor songdb;
+	
+	private static final Set<String> illegalSongs = new HashSet<String>();
+
+	private static Path bmsPath;
 	
 	public static void main(String[] args) {
 		
@@ -43,7 +54,6 @@ public class MainLoader extends Application {
 			e.printStackTrace();
 		}
 
-		Path f = null;
 		PlayMode auto = null;
 		for (String s : args) {
 			if (s.startsWith("-")) {
@@ -69,15 +79,16 @@ public class MainLoader extends Application {
 					auto = PlayMode.PLAY;
 				}
 			} else {
-				f = Paths.get(s);
+				bmsPath = Paths.get(s);
 				if(auto == null) {
 					auto = PlayMode.PLAY;
 				}
 			}
 		}
 		
-		if(Files.exists(MainController.configpath) && (f != null || auto != null)) {
-			play(f, auto, true, null, null, f != null);			
+		if(Files.exists(MainController.configpath) && (bmsPath != null || auto != null)) {
+			IRConnectionManager.getAllAvailableIRConnectionName();
+			play(bmsPath, auto, true, null, null, bmsPath != null);
 		} else {
 			launch(args);			
 		}
@@ -86,6 +97,11 @@ public class MainLoader extends Application {
 	public static void play(Path f, PlayMode auto, boolean forceExit, Config config, PlayerConfig player, boolean songUpdated) {
 		if(config == null) {
 			config = Config.read();			
+		}
+		
+		if(illegalSongs.size() > 0) {
+			JOptionPane.showMessageDialog(null, "This Application detects " + illegalSongs.size() + " illegal BMS songs. \n Remove them, update song database and restart.", "Error", JOptionPane.ERROR_MESSAGE);
+			System.exit(1);
 		}
 
 		try {
@@ -168,12 +184,42 @@ public class MainLoader extends Application {
 	public static Graphics.DisplayMode getDesktopDisplayMode() {
 		return LwjglApplicationConfiguration.getDesktopDisplayMode();
 	}
+	
+	public static SongDatabaseAccessor getScoreDatabaseAccessor() {
+		if(songdb == null) {
+			try {
+				Config config = Config.read();
+				Class.forName("org.sqlite.JDBC");
+				songdb = new SQLiteSongDatabaseAccessor(config.getSongpath(), config.getBmsroot());			
+			} catch (ClassNotFoundException e) {
+				e.printStackTrace();
+			}
+		}
+		return songdb;
+	}
 
+	public static Path getBMSPath() {
+		return bmsPath;
+	}
+
+	public static void putIllegalSong(String hash) {
+		illegalSongs.add(hash);
+	}
+	
+	public static String[] getIllegalSongs() {
+		return illegalSongs.toArray(new String[illegalSongs.size()]);
+	}
+	
+	public static int getIllegalSongCount() {
+		return illegalSongs.size();
+	}
+	
 	@Override
 	public void start(javafx.stage.Stage primaryStage) throws Exception {
 		Config config = Config.read();
 
 		try {
+//			final long t = System.currentTimeMillis();
 			ResourceBundle bundle = ResourceBundle.getBundle("resources.UIResources");
 			FXMLLoader loader = new FXMLLoader(
 					MainLoader.class.getResource("/bms/player/beatoraja/launcher/PlayConfigurationView.fxml"), bundle);
@@ -188,6 +234,7 @@ public class MainLoader extends Application {
 				bmsinfo.exit();
 			});
 			primaryStage.show();
+//			Logger.getGlobal().info("初期化時間(ms) : " + (System.currentTimeMillis() - t));
 
 		} catch (IOException e) {
 			Logger.getGlobal().severe(e.getMessage());
